@@ -1,0 +1,19 @@
+schema_version = "1.0.0"
+
+id = "silica"
+version = "0.1.0"
+name = "Silica"
+tagline = "A Softimage layer for Blender: frontend, skin and workflow"
+maintainer = "Alex Doss"
+website = "https://github.com/whoisit/silica"
+type = "add-on"
+
+blender_version_min = "5.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+copyright = ["2026 Alex Doss"]
+
+tags = ["User Interface", "3D View", "Import-Export"]
+
+[permissions]
+files = "Import Softimage scenes and back up your theme"

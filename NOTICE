@@ -1,0 +1,21 @@
+Silica: a Softimage layer for Blender (frontend, skin and workflow)
+Copyright (C) 2026 Alex Doss
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General
+Public License as published by the Free Software Foundation, either version 3 of the License, or (at your
+option) any later version. See LICENSE.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE (GPL-3.0, sections 15 and 16).
+
+When you redistribute this work or a derivative, keep this notice and the copyright lines in the source
+files, and state your changes (GPL-3.0, section 5).
+
+Independent project. Silica is not affiliated with, endorsed by, sponsored by or supported by
+Autodesk, Inc. or the Blender Foundation, and it is not an official product of either. Please don't contact
+Autodesk for help with it.
+
+Autodesk, Softimage and XSI are registered trademarks or trademarks of Autodesk, Inc. in the USA and other
+countries. Blender is a trademark of the Blender Foundation. These names are used here only to describe the
+workflow this software recreates and the software it runs on. Silica recreates behaviour only: it
+contains no Autodesk code, icons, images or documentation text.
