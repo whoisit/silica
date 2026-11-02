@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "silica"
-version = "0.1.0"
+version = "0.1.1"
 name = "Silica"
 tagline = "A Softimage layer for Blender: frontend, skin and workflow"
 maintainer = "Alex Doss"

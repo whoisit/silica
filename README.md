@@ -2,6 +2,8 @@
 
 **A Softimage layer for Blender: frontend, skin and workflow.**
 
+![Silica in Blender 5.2: Softimage layout, module toolbar, MCP and four views](docs/images/silica-layout.png)
+
 Silica is a free, open-source extension for Blender 5.2 that brings back the Softimage way of working: the
 theme, the layout, the menus, the MCP, the Explorer, property pages, viewport views and the core keys. One click
 switches it all off and gives you plain Blender again. It also opens real Softimage `.scn` files, rebuilding

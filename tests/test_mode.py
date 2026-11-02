@@ -69,3 +69,40 @@ def test_roundtrip_twice():
         mode.enter_mode()
         mode.exit_mode()
     assert not mode.is_on()
+
+
+def _looks_si(t):
+    """Our theme's fingerprint: the Softimage button grey on regular widgets."""
+    return all(abs(a - b / 255) < 0.005 for a, b in zip(t.user_interface.wcol_regular.inner[:3], (199, 196, 193)))
+
+
+def test_stale_softimage_theme_never_becomes_the_backup():
+    """Bug 2026-11-02 (user): mode off showed the Softimage colours. Preferences had been saved while the mode was
+    on, and the backup was gone (it is deleted on mode off), so the next mode on backed up the Softimage theme."""
+    import json, os
+    mode, theme = _m("mode"), _m("theme")
+    if mode.is_on():
+        mode.exit_mode()
+    t = bpy.context.preferences.themes[0]
+    default_regular = tuple(t.user_interface.wcol_regular.inner)    # factory startup: Blender's default theme
+    path = theme._backup_path()
+
+    theme.apply(t)                       # preferences as saved while the mode was on ...
+    if os.path.exists(path):
+        os.remove(path)                  # ... and no backup left
+    mode.enter_mode()
+    mode.exit_mode()
+    assert not _looks_si(t), "mode off kept the Softimage theme (no backup)"
+    assert tuple(t.user_interface.wcol_regular.inner) == default_regular, "not Blender's default theme"
+
+    theme.apply(t)                       # a backup that itself holds the Softimage theme is ignored
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(theme._dump(t), f)
+    mode.enter_mode()
+    mode.exit_mode()
+    assert not _looks_si(t), "mode off restored a Softimage-coloured backup"
+
+    theme.apply(t)                       # startup with the mode off repairs a stale Softimage theme
+    theme.repair()
+    assert not _looks_si(t), "startup repair left the Softimage theme"
+    assert not os.path.exists(path)

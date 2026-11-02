@@ -84,6 +84,9 @@ def restore_on_startup():
         p = _prefs()
         if p and p.mode_on and not is_on():
             enter_mode()
+        elif not is_on():
+            from . import theme
+            theme.repair()
         return None
     bpy.app.timers.register(later, first_interval=0.2)
 

@@ -243,6 +243,65 @@ def _backup_path():
     return os.path.join(bpy.utils.extension_path_user(__package__, create=True), BACKUP)
 
 
+# Our theme's fingerprint: regular widgets in the Softimage button grey with the navy selection. Blender saves the
+# preferences (with whatever theme is showing) on quit, so the Softimage theme can end up as the saved theme. It
+# must never be taken for the user's own theme.
+_FINGERPRINT = (("wcol_regular", "inner", BUTTON), ("wcol_regular", "inner_sel", MENU_HI))
+
+
+def _near(rgb, ref):
+    return all(abs(a - b / 255.0) < 0.005 for a, b in zip(rgb[:3], ref))
+
+
+def is_softimage(theme):
+    ui = theme.user_interface
+    return all(_near(getattr(getattr(ui, w), k), ref) for w, k, ref in _FINGERPRINT)
+
+
+def _data_is_softimage(data):
+    try:
+        ui = data["user_interface"]
+        return all(_near(ui[w][k], ref) for w, k, ref in _FINGERPRINT)
+    except (KeyError, TypeError):
+        return False
+
+
+def _read_backup(path):
+    """The saved theme, or None when there is none, it is unreadable, or it is the Softimage theme itself."""
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return None if _data_is_softimage(data) else data
+
+
+def _reset_to_default(theme):
+    try:
+        bpy.ops.preferences.reset_default_theme()
+    except RuntimeError as e:
+        print("si_kit: could not reset the theme:", e)
+
+
+def _put_back(theme):
+    """Restore the user's theme: the backup if it is a real one, else Blender's default if ours is showing."""
+    path = _backup_path()
+    data = _read_backup(path)
+    changed = True
+    if data is not None:
+        _load(theme, data)
+    elif is_softimage(theme):
+        _reset_to_default(theme)
+    else:
+        changed = False
+    if os.path.exists(path):
+        os.remove(path)
+    if changed:
+        bpy.context.preferences.is_dirty = True   # let auto-save store the restored theme, not the Softimage one
+
+
 def register():
     from . import prefs
     p = prefs.get()
@@ -250,17 +309,21 @@ def register():
         return
     theme = bpy.context.preferences.themes[0]
     path = _backup_path()
-    if not os.path.exists(path):  # keep an older backup: it is the user's real theme
+    if _read_backup(path) is None:   # keep a real older backup: it is the user's own theme
+        if is_softimage(theme):      # the saved preferences already hold ours: back up Blender's default instead
+            _reset_to_default(theme)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(_dump(theme), f)
     apply(theme)
 
 
 def unregister():
-    path = _backup_path()
-    if not os.path.exists(path):
-        return
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    _load(bpy.context.preferences.themes[0], data)
-    os.remove(path)
+    _put_back(bpy.context.preferences.themes[0])
+
+
+def repair():
+    """Startup with the mode off: if the Softimage theme is showing (saved while the mode was on, then the backup
+    was lost or the session crashed), put the user's theme back."""
+    theme = bpy.context.preferences.themes[0]
+    if is_softimage(theme):
+        _put_back(theme)
