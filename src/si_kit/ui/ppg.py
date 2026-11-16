@@ -38,6 +38,60 @@ def _rotation_attr(ob):
                                                                                           "rotation_euler")
 
 
+def _grey(label, why):
+    """A Softimage parameter Blender has no equivalent for: shown greyed with the reason."""
+    return _row(("grey", label, why))
+
+
+def _light_tabs(ob, name_row):
+    """Softimage light PPG (captures: screens/ppg/pointlight.png, install/spdl/C3DLightPoint.spdl, the soft_light
+    shader in capture/shaders.json): tab Light (General, Light Contribution, Clipping Planes, Selective Light,
+    Shadow Map, Area, Photon) and tab soft_light (Colors, Shadows, Raytraced Soft Shadows, Modes, Attenuation).
+    Each Softimage parameter drives Blender's own setting or is greyed with the reason (thin-shell rule)."""
+    lt = ob.data.type
+    general = [_row(("data", "type"), "Light Type")]
+    if lt == 'SPOT':
+        general.append(_row(("data", "spot_size"), "Cone Angle"))
+    general.append(_grey("Exponent", "Blender falloff is physical (inverse square)"))
+    contribution = [_grey("Ambient", "no per-light ambient in Blender: World lighting"),
+                    _row(("data", "diffuse_factor"), "Diffuse"),
+                    _row(("data", "specular_factor"), "Specular"),
+                    _row(("data", "transmission_factor"), "Transmission"),
+                    _row(("data", "volume_factor"), "Volume")]
+    clipping = [_grey("Near / Far", "Blender lights have no clipping planes")]
+    selective = [_row(("path", "ob", "light_linking", "receiver_collection"), "Associated Models"),
+                 _row(("path", "ob", "light_linking", "blocker_collection"), "Shadow Blockers")]
+    shadow_map = [_grey("Shadow Map", "automatic (EEVEE shadow maps, Cycles ray traced)"),
+                  _row(("data", "shadow_maximum_resolution"), "Resolution (EEVEE)"),
+                  _row(("data", "shadow_filter_radius"), "Softness (EEVEE)"),
+                  _grey("Bias / Samples", "handled by Blender's renderers")]
+    if lt == 'AREA':
+        area = [_row(("data", "shape"), "Geometry"), _row(("data", "size"), "Size")]
+        if ob.data.shape in ('RECTANGLE', 'ELLIPSE'):
+            area.append(_row(("data", "size_y"), "Size Y"))
+        area.append(_row(("data", "spread"), "Spread"))
+    else:
+        area = [_grey("Area Light", "in Blender: Light Type Area")]
+    area.append(_grey("Samples", "the renderer's sampling"))
+    photon = [_row(("path", "data", "cycles", "is_caustics_light"), "Caustics (Cycles)"),
+              _grey("Global Illumination / Photons", "Blender path traces, no photon maps")]
+    colors = [_row(("data", "color"), "Color"), _row(("data", "energy"), "Intensity")]
+    if lt == 'SPOT':
+        colors.append(_row(("data", "spot_blend"), "Spread"))
+    shadows = [_row(("data", "use_shadow"), "Enabled"), _grey("Umbra", "Blender shadows are physical")]
+    soft = [_row(("data", "angle"), "Softness") if lt == 'SUN' else _row(("data", "shadow_soft_size"), "Softness"),
+            _grey("Samples", "the renderer's sampling")]
+    modes = [_grey("Flat Light Mode", "no Blender equivalent")]
+    attenuation = [_row(("data", "use_custom_distance"), "Use Light Range (EEVEE)"),
+                   _grey("Start", "Blender falloff starts at the light"),
+                   _row(("data", "cutoff_distance"), "Stop (EEVEE)")]
+    return [("Light", [name_row, ("General", general), ("Light Contribution", contribution),
+                       ("Clipping Planes", clipping), ("Selective Light", selective), ("Shadow Map", shadow_map),
+                       ("Area", area), ("Photon", photon)]),
+            ("soft_light", [("Colors", colors), ("Shadows", shadows), ("Raytraced Soft Shadows", soft),
+                            ("Modes", modes), ("Attenuation", attenuation)])]
+
+
 def property_sets(ob):
     """[(tab, [(section, [row, ...]), ...]), ...] for this object, Softimage names (tabs keep their order)."""
     from ..ops import gn_primitives as gn
@@ -53,11 +107,7 @@ def property_sets(ob):
         tabs.append(("Polygon Mesh", [("Polygon Mesh", [_row(("grey", "Subdivision Rule: Catmull-Clark"))])]))
         tabs.append(("Geometry", [("Subdivisions", subd)]))
     elif ob.type == 'LIGHT':
-        rows = [_row(("data", "type"), "Type"), _row(("data", "color"), "Color"), _row(("data", "energy"), "Intensity"),
-                _row(("data", "use_shadow"), "Shadows")]
-        if ob.data.type == 'SPOT':
-            rows += [_row(("data", "spot_size"), "Cone Angle"), _row(("data", "spot_blend"), "Spread")]
-        tabs.append(("Light", [name_row, ("Light", rows)]))
+        tabs += _light_tabs(ob, name_row)
     elif ob.type == 'CAMERA':
         rows = [_row(("data", "type"), "Projection"), _row(("data", "angle"), "Field of View"),
                 _row(("data", "sensor_fit"), "Field of View Type"), _row(("data", "clip_start"), "Near Plane"),
@@ -73,7 +123,7 @@ def property_sets(ob):
     ]))
     # Softimage Visibility (capture: screens/ppg/cube_visibility.png): General group
     tabs.append(("Visibility", [
-        ("General", [_row(("ob", "hide_viewport"), "View Visibility", invert_checkbox=True),
+        ("General", [_row(("eye",), "View Visibility"),     # the same flag as H (Blender's eye), not "disable"
                      _row(("ob", "hide_render"), "Render Visibility", invert_checkbox=True),
                      _row(("ob", "hide_select"), "Selectability", invert_checkbox=True)]),
         ("Rendering", [_row(("ob", "visible_shadow"), "Cast Shadows")]),
@@ -94,6 +144,13 @@ def resolve(ob, path):
         return ob, _rotation_attr(ob)
     if kind == "data":
         return (ob.data, path[1]) if ob.data is not None and hasattr(ob.data, path[1]) else (None, None)
+    if kind == "path":                    # ("path", "ob" | "data", attr, ..., prop): a nested setting
+        st = ob if path[1] == "ob" else ob.data
+        for a in path[2:-1]:
+            st = getattr(st, a, None)
+            if st is None:
+                return None, None
+        return (st, path[-1]) if hasattr(st, path[-1]) else (None, None)
     if kind == "mod":
         from ..ops import gn_primitives as gn
         mod = ob.modifiers.get(path[1])
@@ -216,10 +273,19 @@ def draw_ppg(layout, context, ob, where):
         else:
             body = col
         for path, label, kw in rows:
+            if path[0] == "eye":                   # Blender's per-view-layer hide (H): no RNA property, an operator
+                visible = not ob.hide_get()
+                r = body.row()
+                r.label(text=label)
+                op = r.operator("si.ppg_eye", text="", icon='CHECKBOX_HLT' if visible else 'CHECKBOX_DEHLT',
+                                emboss=False)
+                op.name = ob.name
+                n += 1
+                continue
             if path[0] == "grey":
                 r = body.row()
                 r.active = False
-                r.label(text=path[1] + "  (not in Blender)")
+                r.label(text="%s  (%s)" % (path[1], path[2] if len(path) > 2 else "not in Blender"))
                 continue
             st, prop = resolve(ob, path)
             if st is None:
@@ -303,6 +369,24 @@ class SI_OT_ppg_tab(bpy.types.Operator):
         setattr(context.window_manager, "si_ppg_popup_tab" if self.where == "popup" else "si_ppg_tab", self.tab)
         for a in context.screen.areas:
             a.tag_redraw()
+        return {'FINISHED'}
+
+
+class SI_OT_ppg_eye(bpy.types.Operator):
+    """View Visibility: show or hide the object in this view layer (the same as H)"""
+    bl_idname = "si.ppg_eye"
+    bl_label = "View Visibility"
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+
+    name: StringProperty()
+
+    def execute(self, context):
+        ob = context.view_layer.objects.get(self.name)
+        if ob is None:
+            return {'CANCELLED'}
+        ob.hide_set(not ob.hide_get())
+        for area in context.screen.areas if context.screen else []:
+            area.tag_redraw()
         return {'FINISHED'}
 
 
@@ -437,7 +521,7 @@ def _on_load(*_args):
     _pane_shows[0] = None
 
 
-classes = (SI_OT_ppg_tab, SI_OT_ppg_lock, SI_OT_ppg_revert, SI_OT_ppg_popup, SI_OT_ppg_show, SI_PT_ppg_pane,
+classes = (SI_OT_ppg_tab, SI_OT_ppg_eye, SI_OT_ppg_lock, SI_OT_ppg_revert, SI_OT_ppg_popup, SI_OT_ppg_show, SI_PT_ppg_pane,
            SI_PT_ppg_popup)
 
 

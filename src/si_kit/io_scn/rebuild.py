@@ -71,6 +71,26 @@ def _sphere(p):
     return pts, polys
 
 
+def with_point_ops(gen):
+    """The live primitive with its point moves and Move Center operators applied, in creation order (object
+    handles): (points, polygons), or None when one of them can't be replayed."""
+    from . import center
+    mesh = primitive_mesh(gen)
+    moves, centers = gen.get("moves") or [], gen.get("centers") or []
+    if mesh is None or ("movecomponentop" in gen.get("ops", ()) and not gen.get("moves")) \
+            or ("center" in gen.get("ops", ()) and not gen.get("centers")):
+        return None
+    pts = list(mesh[0])
+    for op in sorted(list(moves) + list(centers), key=lambda o: o.handle):
+        if isinstance(op, center.Center):
+            pts = center.apply_center(pts, op)
+        else:
+            pts = movecomponent.apply_moves(pts, [op])
+            if pts is None:
+                return None
+    return pts, mesh[1]
+
+
 def with_moves(gen, moves):
     """The live primitive with its point moves applied: (points, polygons), or None when the primitive or a
     move (edge / polygon components) is not supported."""

@@ -210,7 +210,8 @@ for row in range(6):
         E = role_area("EXPLORER"); r = reg(E)
         S["before"] = sorted(o.name for o in bpy.context.selected_objects)
         wm.si_ppg_popup_target = None
-        S["icon_xy"] = (r.x + 50, r.y + r.height - 14 - 20 * row)
+        u = 20 * bpy.context.preferences.system.ui_scale     # UI unit (includes Windows display scaling)
+        S["icon_xy"] = (r.x + int(2.9 * u), r.y + r.height - int(0.7 * u + u * row))   # depth-1 icon
         click(*S["icon_xy"])
     def icon_chk():
         if S.get("icon_ok"):

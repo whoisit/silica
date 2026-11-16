@@ -19,17 +19,21 @@ from mathutils import Matrix, Vector
 
 MESH_KINDS = ("CUBE", "SPHERE", "GRID", "CYLINDER", "CONE", "TORUS", "DISC", "DODECAHEDRON", "ICOSAHEDRON",
               "OCTAHEDRON", "TETRAHEDRON", "EMPTY_MESH")
-KINDS = MESH_KINDS + ("NULL", "LIGHT_POINT", "LIGHT_SPOT", "LIGHT_INFINITE", "CAMERA", "CAMERA_TELEPHOTO",
+KINDS = MESH_KINDS + ("NULL", "LIGHT_POINT", "LIGHT_SPOT", "LIGHT_INFINITE", "LIGHT_BOX", "LIGHT_NEON", "CAMERA", "CAMERA_TELEPHOTO",
                       "CAMERA_WIDE", "CAMERA_ORTHO", "CURVE_CIRCLE",
                       "IMPLICIT_CUBE", "IMPLICIT_SPHERE", "IMPLICIT_CIRCLE", "IMPLICIT_CONE")
 NAMES = {"CUBE": "cube", "SPHERE": "sphere", "GRID": "grid", "CYLINDER": "cylinder", "CONE": "cone",
          "TORUS": "torus", "DISC": "disc", "DODECAHEDRON": "dodecahedron", "ICOSAHEDRON": "icosahedron",
          "OCTAHEDRON": "octahedron", "TETRAHEDRON": "tetrahedron", "EMPTY_MESH": "polymsh", "NULL": "null",
-         "LIGHT_POINT": "light", "LIGHT_SPOT": "Spot", "LIGHT_INFINITE": "infinite", "CAMERA": "Camera",
+         "LIGHT_POINT": "light", "LIGHT_SPOT": "Spot", "LIGHT_INFINITE": "infinite", "LIGHT_BOX": "Light_Box",
+         "LIGHT_NEON": "Neon", "CAMERA": "Camera",
          "CAMERA_TELEPHOTO": "Telephoto", "CAMERA_WIDE": "WideAngle", "CAMERA_ORTHO": "Ortho",
          "CURVE_CIRCLE": "circle", "IMPLICIT_CUBE": "cube", "IMPLICIT_SPHERE": "sphere",
          "IMPLICIT_CIRCLE": "circle", "IMPLICIT_CONE": "cone"}
-LIGHT_POWER = {'POINT': 1000.0, 'SPOT': 2000.0, 'SUN': 3.0}
+LIGHT_POWER = {'POINT': 1000.0, 'SPOT': 2000.0, 'SUN': 3.0, 'AREA': 2000.0}
+# Softimage area-light presets (capture: prims/Light_Box.json, Light_Neon.json): Light Box = a spot with a 4 x 4
+# rectangle area (60 degree cone), Neon = a point with a 10 x 0.3 rectangle. Blender: Area lights (one-sided).
+AREA_PRESETS = {"LIGHT_BOX": dict(size=4.0, size_y=4.0, spot=True), "LIGHT_NEON": dict(size=10.0, size_y=0.3, spot=False)}
 # horizontal field of view in degrees (Softimage fovtype 1 = horizontal)
 CAMERA_FOV = {"CAMERA": 53.638, "CAMERA_TELEPHOTO": 6.662, "CAMERA_WIDE": 115.62, "CAMERA_ORTHO": 53.638}
 
@@ -275,14 +279,22 @@ def create(context, kind):
         ob = _empty(context, NAMES[kind], disp, 4.0)
         return [ob], ob
     if kind.startswith("LIGHT_"):
-        ltype = {"LIGHT_POINT": 'POINT', "LIGHT_SPOT": 'SPOT', "LIGHT_INFINITE": 'SUN'}[kind]
+        ltype = {"LIGHT_POINT": 'POINT', "LIGHT_SPOT": 'SPOT', "LIGHT_INFINITE": 'SUN', "LIGHT_BOX": 'AREA',
+                 "LIGHT_NEON": 'AREA'}[kind]
         name = NAMES[kind]
         data = bpy.data.lights.new(name, ltype)
         # Softimage lights have no falloff by default; Blender's are physical. These powers light an
         # 8-unit Softimage-sized scene from ~10 units away.
         data.energy = LIGHT_POWER[ltype]
-        if ltype == 'SPOT':
-            data.spot_size = math.radians(60.0)      # Softimage LightCone 60
+        area = AREA_PRESETS.get(kind)
+        if area:
+            data.shape = 'RECTANGLE'
+            data.size, data.size_y = area["size"], area["size_y"]
+            if area["spot"]:
+                data.spread = math.radians(60.0)     # Softimage LightCone 60 of the Light Box spot
+        if ltype == 'SPOT' or (area and area["spot"]):
+            if ltype == 'SPOT':
+                data.spot_size = math.radians(60.0)      # Softimage LightCone 60
             root = _empty(context, name + "_Root")
             ob = bpy.data.objects.new(si_name(name), data)
             ob.parent = root

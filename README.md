@@ -35,14 +35,26 @@ Requires **Blender 5.2** or newer.
   - A / F frame all / selection, R reset camera, H hide, G grid, D duplicate, K key
   - Q render region, F12 maximize the view under the mouse, Enter opens the property page
   - 1-4 module toolbars, 5-0 floating Browser, Layers, Render Tree, Explorer, Schematic, Animation Editor
-- **Explorer:** the scene tree, with F to find the selected object.
-- **Property Editor (PPG)** for the selection.
-- **Get > Primitive** with Softimage's default sizes and subdivisions.
+- **Explorer:** the scene tree drawn the Softimage way (colours, italics, selection boxes), fast on scenes
+  with thousands of objects. Scopes (Scene Root, Passes, Current Pass, Selection, Materials, keys S P U E M),
+  Softimage's click, middle-click (branch) and Shift / Ctrl selection, arrow and NumPad keys, F2 rename, right-click
+  menus, and drag and drop: parent / unparent, Ctrl to duplicate, objects into partitions and passes, materials
+  onto objects.
+- **Render passes and partitions:** passes are Blender view layers, partitions are collections; Render > Pass
+  makes, duplicates and deletes passes and moves objects between partitions. Partition overrides (visibility,
+  matte, primary rays) map onto Blender's per-view-layer settings, and 15 of Softimage's pass presets (mattes,
+  depth, shadow, reflection, ambient, diffuse, ...) map onto Blender's render passes.
+- **Property Editor (PPG)** for the selection, with a light page in Softimage's layout.
+- **Visibility:** H hides from view and render like Softimage; hidden objects show an H in the Explorer and can
+  be picked there and brought back.
+- **Get > Primitive** with Softimage's default sizes and subdivisions, including the Light Box and Neon lights.
 - **Memo cams** (four stored views per viewport) and view maximize (full, horizontal, vertical).
 - **Render Tree** colours and a preset panel; Tab adds a node.
 - **Import Softimage scenes:** **File > Import > Softimage Scene (.scn)**. It reads the scene file itself; you
   don't need Softimage installed. You get:
-  - frozen meshes and live primitives, with their transforms and hierarchy
+  - frozen meshes and live primitives, with their transforms and hierarchy, point moves and Move Center
+  - envelopes (skinning) with their painted weights, as a Blender armature
+  - visibility (view, render, selectability), also from groups
   - cameras and lights
   - materials (mapped to Principled BSDF), UV maps and image textures
 
@@ -50,9 +62,10 @@ Requires **Blender 5.2** or newer.
 
 - Many keys and tools are missing. Examples: M to tweak components, +/− subdivision, Reset SRT, isolate
   selection.
-- Animation, envelopes and weights, the Mixer, render passes and partitions, ICE.
-- Import: no animation yet. Live primitives get no UVs. Some scenes from older Softimage versions only
-  partly load.
+- Animation, the Mixer, ICE, a real Schematic view (key 9 opens Blender's Outliner for now), scene layers, a
+  material on one partition only.
+- Import: no animation, shape keys or IK chains yet. Live primitives get no UVs. Some scenes from older
+  Softimage versions only partly load.
 
 Please report what you miss most. If a `.scn` won't import, open an issue with your Blender version and
 what the import report says. **Don't attach client or confidential scenes to public issues.**

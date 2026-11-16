@@ -26,6 +26,8 @@ Limits of simulated input (found 2026-11-02):
 - Which button is under the mouse can't be read from a timer (`context.button_*` is empty there). For panels of
   plain properties and operators, a background test that draws the panel into a recording layout is cheaper
   (tests/test_mcp.py).
+- Pixel positions must scale with `preferences.system.ui_scale` (UI unit = 20 x it), which includes Windows
+  display scaling: the desktop runs at 125 % since about 2026-11-12, and tests with 20 px rows broke (2026-11-16).
 - A fresh worktree's dev profile has the kit disabled: run `python -I tools/dev.py enable` once, or GUI tests fail
   for no visible reason.
 

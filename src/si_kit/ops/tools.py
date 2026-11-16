@@ -424,8 +424,37 @@ class SI_OT_frame(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def hide_toggle(context):
+    """Softimage H (ToggleVisibility) on objects: hides from the view AND the render, and brings both back (checked
+    in Softimage 2026-11-11: H sets viewvis and rendvis off, H again on). Hidden objects picked in the Explorer come
+    back and get selected; otherwise the selection is hidden; with nothing selected or picked, every view-hidden
+    object comes back. Blender's own flags: the eye (view layer) + hide_render. Returns 'unhid' / 'hid' / 'unhid all'."""
+    from ..ui import explorer
+    vl = context.view_layer
+    picked = explorer.picked_hidden(context)
+    if picked:
+        for o in picked:
+            o.hide_set(False, view_layer=vl)
+            o.hide_render = False
+            o.select_set(True, view_layer=vl)
+        vl.objects.active = picked[-1]
+        explorer.hidden_picks.clear()
+        return "unhid"
+    if context.selected_objects:
+        for o in context.selected_objects:
+            o.select_set(False, view_layer=vl)
+            o.hide_set(True, view_layer=vl)
+            o.hide_render = True
+        return "hid"
+    for o in vl.objects:
+        if o.hide_get(view_layer=vl):
+            o.hide_set(False, view_layer=vl)
+            o.hide_render = False
+    return "unhid all"
+
+
 class SI_OT_hide_toggle(bpy.types.Operator):
-    """Softimage H: hide the selection, or unhide everything when nothing is selected"""
+    """Softimage H: hide the selection; hidden objects picked in the Explorer come back; nothing selected: unhide all"""
     bl_idname = "si.hide_toggle"
     bl_label = "Hide/Unhide Selection"
     bl_options = {'REGISTER', 'UNDO'}
@@ -434,10 +463,9 @@ class SI_OT_hide_toggle(bpy.types.Operator):
         if context.mode == 'EDIT_MESH':
             bpy.ops.mesh.hide(unselected=False)
             return {'FINISHED'}
-        if context.selected_objects:
-            bpy.ops.object.hide_view_set(unselected=False)
-        else:
-            bpy.ops.object.hide_view_clear()
+        hide_toggle(context)
+        for area in context.screen.areas if context.screen else []:
+            area.tag_redraw()
         return {'FINISHED'}
 
 

@@ -132,6 +132,12 @@ def test_lights_and_cameras():
     assert cam.parent and cam.parent.name.startswith("Camera_Root")
     sun = _make("LIGHT_INFINITE")
     assert sun.data.type == 'SUN'
+    # Softimage's area-light presets (user request 2026-11-11: area lights only after the fact before)
+    box = _make("LIGHT_BOX")
+    assert box.data.type == 'AREA' and (box.data.size, box.data.size_y) == (4.0, 4.0)
+    assert box.constraints[0].target.name.endswith("_Interest")          # aimed like a spot
+    neon = _make("LIGHT_NEON")
+    assert neon.data.type == 'AREA' and abs(neon.data.size - 10.0) < 1e-6 and abs(neon.data.size_y - 0.3) < 1e-6
 
 
 def test_undo_friendly_and_selected():

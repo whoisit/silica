@@ -64,12 +64,24 @@ def _blob(d, obj):
         p += 1
 
 
+_WIDTHS = (1, 2, 3, 4)
+
+
+def _unpack(d, q, n, width):
+    """n little-endian unsigned ints of `width` bytes at q. Width 3 is used when the range passes 65535
+    (e.g. node arrays of meshes with more than 65535 polygon nodes)."""
+    if width == 3:
+        b = d[q:q + 3 * n]
+        return [b[i] | b[i + 1] << 8 | b[i + 2] << 16 for i in range(0, 3 * n, 3)]
+    return list(struct.unpack_from("<%d%s" % (n, {1: "B", 2: "H", 4: "I"}[width]), d, q))
+
+
 def _int_array(d, p, end):
     """Integer array at p (pointing at f0 f1). Returns (range, values, next) or None."""
     try:
         rng, q = cnum(d, p + 2)
         width, q = cnum(d, q)
-        if width not in (1, 2, 4) or d[q] != 0xF1:
+        if width not in _WIDTHS or d[q] != 0xF1:
             return None
         n, q = cnum(d, q + 1)
         w2, q = cnum(d, q)
@@ -78,8 +90,7 @@ def _int_array(d, p, end):
         return None
     if w2 != width or n2 != n or n < 6 or q + n * width > end:
         return None
-    fmt = {1: "B", 2: "H", 4: "I"}[width]
-    vals = list(struct.unpack_from("<%d%s" % (n, fmt), d, q)[3:-3])
+    vals = _unpack(d, q, n, width)[3:-3]
     q += n * width
     # Every integer array is followed by an override table  f0 f1 <count> fc <count>  of 12-byte entries
     # (u32 value, u32 extra, u32 position): the slot at `position` holds an index into this table, the
@@ -105,17 +116,24 @@ def _int_array(d, p, end):
 
 
 def _double_array(d, p, end, elem):
-    """Double array 'f0 f1 <count> <elem> <count>' at p. Returns (count, flat doubles, next) or None."""
+    """Double array 'f0 f1 <count> <elem> <n1> <n1 elements> [<n2> <n2 elements> ...]' at p: large arrays come in
+    pieces (seen in a 48452-point mesh saved in 2006: 41666 + 6786). Returns (count, flat doubles, next) or None."""
     try:
         cnt, q = cnum(d, p + 2)
         es, q = cnum(d, q)
-        cnt2, q = cnum(d, q)
+        if es != elem:
+            return None
+        flat, got = [], 0
+        while got < cnt:
+            n, q = cnum(d, q)
+            if n == 0 or got + n > cnt or q + n * es > end:
+                return None
+            flat.extend(struct.unpack_from("<%dd" % (n * (es // 8)), d, q))
+            got += n
+            q += n * es
     except (Lost, IndexError):
         return None
-    if es != elem or cnt2 != cnt or q + cnt * es > end:
-        return None
-    k = es // 8
-    return cnt, struct.unpack_from("<%dd" % (cnt * k), d, q), q + cnt * es
+    return cnt, tuple(flat), q
 
 
 def read_polymsh(d, obj):
@@ -263,7 +281,10 @@ def _polygon_flags(d, lo, hi, npolys, nnodes):
         try:
             bits, q = cnum(d, p + len(head))
             if d[q] == 0xF1:
-                n, q = cnum(d, q + 1)
+                n, q2 = cnum(d, q + 1)
+                if n != nnodes:          # past 65535 nodes the repeated node count is left out
+                    n, q2 = nnodes, q
+                q = q2
                 if n == nnodes and d[q] == 0xF1:
                     nb, q = cnum(d, q + 1)
                     if d[q] == 0xF1:
@@ -293,13 +314,13 @@ def _polygon_chains(d, lo, hi, nnodes, chained, sizes):
         q = p + len(head)
         try:
             w, q = cnum(d, q)
-            if w in (1, 2, 4) and d[q] == 0xF1:
+            if w in _WIDTHS and d[q] == 0xF1:
                 n, q = cnum(d, q + 1)
                 w2, q = cnum(d, q)
                 n2, q = cnum(d, q)
                 if w2 == w and n2 == n and q + n * w <= hi:
                     if n >= 6:
-                        vals = list(struct.unpack_from("<%d%s" % (n, {1: "B", 2: "H", 4: "I"}[w]), d, q))[3:-3]
+                        vals = _unpack(d, q, n, w)[3:-3]
                         _split_chains(vals, chained, sizes, out)
                     p = d.find(head, q + n * w, hi)
                     continue

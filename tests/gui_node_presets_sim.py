@@ -141,7 +141,8 @@ def drag_scaled():
     i, _l, rect = geo()["nodes"][0]
     S["drag_id"], S["from"] = i, to_win(rect)
     r = reg()
-    S["to"] = (r.x + int(r.width * 0.75), r.y + int(r.height * 0.3))
+    pw = geo()["panel"][2]          # drop on the graph right of the panel (it is wide at 1.5 x Windows scaling)
+    S["to"] = (r.x + (pw + r.width) // 2, r.y + int(r.height * 0.3))
     S["n2"] = len(tree().nodes)
     mv(*S["from"]); press('LEFTMOUSE', *S["from"])
 s(drag_scaled, 0.15)

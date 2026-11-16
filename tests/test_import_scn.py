@@ -89,6 +89,29 @@ def test_mesh_fan_matches_reader():
     assert sorted(len(p.vertices) for p in got.data.polygons) == sorted(len(f) for f in want.mesh.polygons)
 
 
+def test_mesh_arrays_past_65535_nodes():
+    """User report 2026-11-12: a 2014 tank's biggest meshes came in scrambled. Past 65535 polygon nodes Softimage
+    writes 3-byte integers and leaves the repeated node count out of the polygon-code header."""
+    mesh = _m("io_scn.mesh")
+    cb = mesh._cnum_bytes
+    vals = [0, 70000, 66193, 1, 65536]
+    elems = [7, 7, 7] + vals + [7, 7, 7]
+    raw = b"".join(v.to_bytes(3, "little") for v in elems)
+    arr = b"\xf0\xf1" + cb(66194) + cb(3) + b"\xf1" + cb(len(elems)) + cb(3) + cb(len(elems)) + raw + b"\xf0\xf1\xf0\xfc"
+    rng, got, end = mesh._int_array(arr, 0, len(arr))
+    assert (rng, got, end) == (66194, vals, len(arr)), (rng, got, end)
+    # polygon codes: f0 f1 <nodes> <bits> f1 <nbytes> f1 <nbytes> <codes>, 3 polygons: run, chain, run
+    flags = b"\xf0\xf1" + cb(66194) + cb(5) + b"\xf1" + cb(2) + b"\xf1" + cb(2) + bytes([0x4c, 0x0c])
+    assert mesh._polygon_flags(flags, 0, len(flags), 3, 66194) == [12, 4, 12]
+    # the real scene (private), when SI_SCN_BIG points at it
+    tank = os.environ.get("SI_SCN_BIG", "")
+    if tank and os.path.isfile(tank):
+        sc = _m("io_scn.scene").read(tank)
+        ms = [o.mesh for o in sc.objects if o.kind == 'polymsh' and o.mesh is not None]
+        assert len(ms) >= 743 and all(m.edges_ok is not False for m in ms), len(ms)
+        assert max(m.counts[3] for m in ms) > 65535
+
+
 # Live primitives whose shape Blender can build exactly (prim_<kind>.scn: <kind>_def has Softimage's defaults,
 # <kind>_set distinctive values; see gen_scn_corpus.py).
 EXACT = ("cube_def", "cube_set", "sphere_def", "sphere_set", "grid_def", "grid_set", "cylinder_def", "cone_def", "torus_def",
@@ -154,7 +177,13 @@ def _real_dir():
 
 
 REAL = _real_dir()
-DUMPS = {"sitoa": os.path.join(REF, "sitoa_truth_mat"), "real": os.path.join(REF, "xsi_rd_truth_mat")}
+DUMPS = {"sitoa": os.path.join(REF, "sitoa_truth_mat"), "real": os.path.join(REF, "real_truth_mat")}
+
+
+def _is_real(path):
+    """True for a scene from the user's private real-scene folder (REAL)."""
+    norm = lambda p: os.path.normcase(os.path.normpath(p))
+    return bool(REAL) and norm(path).startswith(norm(REAL))
 
 
 def _clean():
@@ -432,7 +461,7 @@ def test_image_texture():
             _name, paths = mats.clip_paths(sc.cfb, h)
             found, _shown = imp.resolve_image(paths, scn)
             assert found and os.path.isfile(found) and "XSIProject" in found, (paths, found)
-    hit = _find(lambda s, t: _image_on_colour(s, t) and "XSI_RD" in t["scene"])
+    hit = _find(lambda s, t: _image_on_colour(s, t) and _is_real(t["scene"]))
     if hit:   # the user's scenes mostly point at files that are not on this machine
         _, reports = _build(hit[0])
         m = _mat(hit[2])
@@ -520,3 +549,87 @@ def test_operators_on_meshes():
         ob = _import("ops_frozen_bend")["grid1"]
         assert ob.type == 'MESH' and len(ob.data.vertices) == 25
         assert "bendop" in ob.get("si_import_notes", ""), ob.get("si_import_notes")
+
+
+def test_move_center():
+    """Move Center (the `center` operator: the object's center moved, the points kept in place): on a live
+    primitive it is replayed like point moves, on a frozen mesh applied to the stored points; either way the
+    points are Softimage's and nothing is left in the note (corpus ctr_*: translate, rotate, scale, both, a
+    frozen mesh scaled 0.01 like the tank rig's meshes)."""
+    import json
+    for case in ("ctr_cube_pos", "ctr_cube_rot", "ctr_cube_scl", "ctr_cube_two", "ctr_frozen_scl", "ctr_bbox"):
+        if not _have(case):
+            continue
+        ob = _import(case)["cube1"]
+        t = [o for o in json.load(open(os.path.join(CORPUS, case + ".json")))["objects"] if o["name"] == "cube1"][0]
+        want = [(x, -z, y) for x, y, z in t["mesh"]["points"]]
+        got = [tuple(v.co) for v in ob.data.vertices]
+        assert len(got) == len(want) and all((Vector(a) - Vector(b)).length < 1e-5 for a, b in zip(got, want)),             (case, got[:2], want[:2])
+        assert "center" not in ob.get("si_import_notes", ""), (case, ob.get("si_import_notes"))
+
+
+def test_envelopes():
+    """Enveloped meshes arrive skinned like in Softimage: hidden armature, a bone per deformer following it,
+    skinned points and deformer positions equal to Softimage's (private scenes with a truth export in
+    reference/deform_truth; skipped when there are none)."""
+    import glob
+    import json
+    for truth in sorted(glob.glob(os.path.join(REF, "deform_truth", "*.json"))):
+        t = json.load(open(truth))
+        if os.path.isfile(t["scene"]) and any(o.get("envelopes") for o in t["objects"]):
+            _check_envelopes(t)
+
+
+def _check_envelopes(t):
+    from math import radians
+    from mathutils import Matrix
+    T = {o["full"]: o for o in t["objects"]}
+    objs, _reports = _build(t["scene"])
+    C = Matrix.Rotation(radians(90.0), 4, 'X')
+    si = lambda f: Matrix([f[0:4], f[4:8], f[8:12], f[12:16]]).transposed()
+    dg = bpy.context.evaluated_depsgraph_get()
+    meshes = [n for n, o in T.items() if o.get("envelopes")]
+    assert meshes
+    for full in meshes:
+        o = T[full]
+        ob = objs[o["name"]]
+        rig = bpy.data.objects.get(ob.name + "_Envelope")
+        defs = o["envelopes"][0]["deformers"]
+        assert rig is not None and rig.hide_get() and len(rig.data.bones) == len(defs), (ob.name, rig)
+        for pb, d in zip(rig.pose.bones, defs):
+            con = pb.constraints[0]
+            assert con.type == 'CHILD_OF' and con.target == objs[d.split(".")[-1]], (pb.name, d)
+        for d in defs:
+            want = C @ si(T[d]["global"]) @ C.inverted()
+            got = objs[d.split(".")[-1]].matrix_world
+            assert max(abs(got[r][c] - want[r][c]) for r in range(4) for c in range(4)) < 1e-3, d
+        me = ob.evaluated_get(dg).to_mesh()
+        G = si(o["global"])
+        err = max((ob.matrix_world @ v.co - C @ (G @ Vector((*p, 1.0))).to_3d()).length
+                  for v, p in zip(me.vertices, o["points"]))
+        ob.evaluated_get(dg).to_mesh_clear()
+        assert err < 1e-3, (ob.name, err)
+        assert "envelopop" not in ob.get("si_import_notes", ""), ob.get("si_import_notes")
+
+
+def test_visibility():
+    """Objects hidden, unrenderable or unselectable in Softimage (own Visibility property + groups) arrive the same
+    way in Blender (private scenes with a truth export in reference/visibility_truth; skipped when there are none)."""
+    import glob
+    import json
+    for truth in sorted(glob.glob(os.path.join(REF, "visibility_truth", "*.json"))):
+        t = json.load(open(truth))
+        if not os.path.isfile(t["scene"]):
+            continue
+        objs, _reports = _build(t["scene"])
+        vl = bpy.context.view_layer
+        checked = 0
+        for o in t["objects"]:
+            ob = objs.get(o["full"].split(".")[-1])
+            if ob is None or "viewvis" not in o:
+                continue
+            assert ob.hide_get(view_layer=vl) == (not o["viewvis"]), (o["full"], "view")
+            assert ob.hide_render == (not o["rendvis"]), (o["full"], "render")
+            assert ob.hide_select == (not o["selectability"]), (o["full"], "select")
+            checked += 1
+        assert checked, truth

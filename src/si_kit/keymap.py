@@ -78,6 +78,8 @@ WINDOW = (
 # Explorer: F = Find Next Selected Node (si.explorer_find passes through in other Properties editors)
 EXPLORER_KEYS = (
     ('F', 0, 0, 0, "si.explorer_find", {}, "Find Next Selected Node"),
+    ('DEL', 0, 0, 0, "si.explorer_delete", {}, "Delete Selection"),
+    ('H', 0, 0, 0, "si.explorer_hide", {}, "Hide/Unhide Selection"),
 )
 
 _items = []   # (keymap, item)

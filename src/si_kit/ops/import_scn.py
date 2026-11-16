@@ -105,13 +105,16 @@ def ops_text(ops, moves=None):
     return ", ".join(out)
 
 
+REPLAYED = {"movecomponentop", "center"}
+
+
 def replayed_moves(gen):
-    """(points, polygons) of a live primitive whose only operators are point moves, replayed on Softimage's
-    point order (io_scn.rebuild); None when that is not possible."""
+    """(points, polygons) of a live primitive whose only operators are point moves and Move Center, replayed on
+    Softimage's point order (io_scn.rebuild); None when that is not possible."""
     from ..io_scn import rebuild
-    if not gen.get("ops") or set(gen["ops"]) != {"movecomponentop"} or not gen.get("moves"):
+    if not gen.get("ops") or not set(gen["ops"]) <= REPLAYED:
         return None
-    return rebuild.with_moves(gen, gen["moves"])
+    return rebuild.with_point_ops(gen)
 
 
 def camera_data(name, c):
@@ -219,10 +222,12 @@ def build(context, sc, report=None):
         if so.kind == 'polymsh' and so.mesh is not None:
             ob = mesh_object(so.name, so.mesh.points, so.mesh.polygons)
             ops = getattr(so, "ops", None)
+            if ops and getattr(so, "envelopes", None):     # applied by import_envelopes
+                ops = [o for o in ops if o != "envelopop"]
             return note(ob, "mesh", ["operators on top not applied: %s" % ops_text(ops)] if ops else [])
         if so.kind == 'polymsh' and getattr(so, "generator", None) is not None:
             moved = replayed_moves(so.generator)
-            if moved is not None:            # live primitive + point moves: replayed, as a plain mesh
+            if moved is not None:            # live primitive + point moves / Move Center: replayed, a plain mesh
                 return mesh_object(so.name, *moved)
             gen = so.generator
             exact = exact_shape(gen)
@@ -246,21 +251,49 @@ def build(context, sc, report=None):
             return note(bpy.data.objects.new(so.name, data), "light", notes)
         return bpy.data.objects.new(so.name, None)
 
+    world = {}
+
     def walk(so, parent_so):
         ob = make(so)
         collection.objects.link(ob)
+        own_fix = so.kind in FIXED_KINDS
+        basis = blender_matrix(so.local, own_fix=own_fix,
+                               parent_fix=parent_so is not None and parent_so.kind in FIXED_KINDS)
+        pw = world[id(parent_so)] if parent_so is not None else Matrix.Identity(4)
+        # Rigs: IK, constraints and expressions move objects away from parent x local; the stored global is
+        # what Softimage shows, so there the local is taken from it.
+        g = blender_matrix(so.glob, own_fix=own_fix)
+        if getattr(so, "glob_read", False) and any(abs(a - b) > 1e-4 for ra, rb in zip(pw @ basis, g)
+                                                   for a, b in zip(ra, rb)):
+            basis = pw.inverted_safe() @ g
         if parent_so is not None:
             ob.parent = made[id(parent_so)]
-        ob.matrix_basis = blender_matrix(so.local, own_fix=so.kind in FIXED_KINDS,
-                                         parent_fix=parent_so is not None and parent_so.kind in FIXED_KINDS)
+        ob.matrix_basis = basis
+        world[id(so)] = pw @ basis
         made[id(so)] = ob
         for c in so.children:
             walk(c, so)
 
     for r in sc.roots:
         walk(r, None)
-    from . import import_materials
+    from . import import_envelopes, import_materials
     import_materials.apply(sc, made, report)
+    import_envelopes.apply(context, sc, made, report)
+    # Softimage visibility (own Visibility property + groups, io_scn/visibility.py) on Blender's own flags:
+    # view visibility = the eye (the same as H), render visibility = disable in renders, selectability = disable
+    # selection in the viewport (the Explorer can still select, like Softimage's)
+    vl = context.view_layer
+    vl.update()        # new objects get their view-layer entries first; flags set before that are lost on resync
+    for so in sc.objects:
+        ob, vis = made.get(id(so)), getattr(so, "visibility", None)
+        if ob is None or not vis:
+            continue
+        if not vis["viewvis"] and ob.name in vl.objects:
+            ob.hide_set(True, view_layer=vl)
+        if not vis["rendvis"]:
+            ob.hide_render = True
+        if not vis["selectability"]:
+            ob.hide_select = True
     return {so.name: made[id(so)] for so in sc.objects if id(so) in made}
 
 

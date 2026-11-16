@@ -14,10 +14,10 @@ _active = []     # modules registered by enter_mode, in order
 
 def _mode_modules():
     from . import theme, keymap, layout
-    from .ops import primitives, misc, tools, render_region, import_scn
+    from .ops import primitives, misc, tools, render_region, import_scn, passes, pass_presets
     from .menus import build as menus
     from .ui import topbar, docks, viewport, viewport_tools, explorer, ppg, node_presets, view_windows
-    return (theme, misc, primitives, tools, render_region, import_scn, menus, docks, ppg, explorer, topbar,
+    return (theme, misc, primitives, tools, render_region, import_scn, passes, pass_presets, menus, docks, ppg, explorer, topbar,
             viewport_tools, viewport, node_presets, view_windows, layout, keymap)
 
 

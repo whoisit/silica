@@ -22,9 +22,10 @@ COMPONENT = {"Point_INTERNAL": "pnt", "Edge_INTERNAL": "edge", "Polygon_INTERNAL
 
 
 class Move:
-    __slots__ = ("component", "elements", "ref", "move")
+    __slots__ = ("component", "elements", "ref", "move", "handle")
 
-    def __init__(self, component, elements, ref, move):
+    def __init__(self, component, elements, ref, move, handle=0):
+        self.handle = handle          # object handle: creation order
         self.component = component    # 'pnt', 'edge' or 'poly'
         self.elements = elements      # component indices, in Softimage's numbering
         self.ref = ref                # (scale, rotation radians XYZ, translation) of the reference state
@@ -102,7 +103,7 @@ def read_moves(st, polymsh):
         ref, move = states.get("Static_KineState"), states.get("Static_KineState1")
         if comp is None or elements is None or ref is None or move is None:
             return None
-        out.append(Move(comp, elements, ref, move))
+        out.append(Move(comp, elements, ref, move, op.handle))
     return out
 
 

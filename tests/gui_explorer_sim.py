@@ -30,7 +30,7 @@ def ex(): return importlib.import_module(K + ".ui.explorer")
 def docks(): return importlib.import_module(K + ".ui.docks")
 def views3d(): return sorted((a for a in win.screen.areas if a.type == 'VIEW_3D'), key=lambda a: (-a.y, a.x))
 def reg(a): return next(r for r in a.regions if r.type == 'WINDOW')
-def U(): return round(20 * bpy.context.preferences.system.ui_scale)
+def U(): return ex().unit()
 def rows(): return [(d, label) for d, label, _k, _sel in ex().drawn]
 def row_index(label, depth=None):
     for i, (d, l, _k, _s) in enumerate(ex().drawn):

@@ -201,10 +201,15 @@ class SI_OT_view_set(bpy.types.Operator):
             ob = bpy.data.objects.get(self.obj)
             if ob is None:
                 return {'CANCELLED'}
-            context.scene.camera = ob          # any object can be looked through, spot lights included
-            space.use_local_camera = False
+            # Like Softimage: this view looks through the object (any object, spot lights included) and
+            # navigating the view moves it. Blender's own per-view camera + Lock Camera to View; the scene's
+            # render camera is left alone.
+            space.use_local_camera = True
+            space.camera = ob
+            space.lock_camera = True
             r3.view_perspective = 'CAMERA'
             return {'FINISHED'}
+        space.lock_camera = False                 # leaving a camera / spot view: navigating moves the view again
         if self.view == 'USER':
             if r3.view_perspective != 'PERSP':
                 r3.view_perspective = 'PERSP'
@@ -372,12 +377,154 @@ class SI_MT_display_realtime(bpy.types.Menu):
         row.operator("si.unmapped", text="DirectX").path = "Viewport Display/Realtime Shaders/DirectX"
 
 
+# --- Show menu (the eye icon): what this viewport shows -------------------------------------------------------
+# Softimage item (capture: menus.json "viewport_visibility") -> Blender's own per-view settings it switches
+# ("space" = the 3D view, "overlay", "shading"), or None = no Blender equivalent (greyed). Order and separators as
+# captured: viewport aids, objects, components / attributes.
+_GEOM = [("space", "show_object_viewport_" + k) for k in ("mesh", "surf", "meta", "font", "volume")]
+SHOW_MENU = [
+    ("Manipulate Tool", [("space", "show_gizmo")]),
+    ("Grid", [("overlay", "show_floor"), ("overlay", "show_axis_x"), ("overlay", "show_axis_y")]),
+    ("Frame Rate", None),
+    ("Selection Info", [("overlay", "show_stats")]),
+    None,
+    ("Lights", [("space", "show_object_viewport_light"), ("space", "show_object_viewport_light_probe")]),
+    ("Cameras", [("space", "show_object_viewport_camera")]),
+    ("3D Geometry", _GEOM),
+    ("Implicit Geometry", None),
+    ("Curves", [("space", "show_object_viewport_curve")]),
+    ("Point Clouds", [("space", "show_object_viewport_pointcloud")]),
+    ("Hair", [("space", "show_object_viewport_curves")]),
+    ("Nulls", [("space", "show_object_viewport_empty")]),
+    ("Transform Groups", None),
+    ("Chains", [("space", "show_object_viewport_armature")]),
+    ("Lattices", [("space", "show_object_viewport_lattice")]),
+    ("Texture Controls", None),
+    ("Control Objects", None),
+    ("Instances", None),
+    ("Annotation Objects", [("overlay", "show_annotation"), ("space", "show_object_viewport_grease_pencil")]),
+    ("Environment", None),
+    "objects",
+    None,
+    ("Invisible Components", None),
+    ("Name", None),
+    ("Attachments (Annotation and Synoptic)", None),
+    ("User Keywords", None),
+    ("Unselected Clusters (except Sample)", None),
+    ("PolyMesh Boundaries and Hard Edges", [("overlay", "show_edge_sharp")]),
+    ("PolyMesh Hulls", None),
+    ("PolyMesh Internal Edges", None),
+    ("Subdivision Surfaces", None),
+    ("NURBS Boundaries", None),
+    ("NURBS Hulls", None),
+    ("Points", None),
+    ("Knots", None),
+    ("Sampled Points", None),
+    ("Centers", [("overlay", "show_object_origins")]),
+    ("Normals", [("overlay", "show_vertex_normals")]),
+    ("Polygon Normals", [("overlay", "show_face_normals")]),
+    ("Cones", None),
+    ("Relations", [("overlay", "show_relationship_lines")]),
+    ("Animation Cues", [("overlay", "show_motion_paths")]),
+    ("Weight Points", None),
+    ("Weight Maps", [("overlay", "show_weight")]),
+    ("Unselected Tag Points", None),
+    ("Distance to Output Camera", None),
+    ("Display/ICE Attributes", None),
+    ("XRay Surfaces", [("shading", "show_xray")]),
+    "components",
+]
+_SHOW_OBJECTS = {"Lights", "Cameras", "3D Geometry", "Curves", "Point Clouds", "Hair", "Nulls", "Chains", "Lattices",
+                 "Annotation Objects"}
+
+
+def _show_owner(space, owner):
+    return {"space": space, "overlay": space.overlay, "shading": space.shading}[owner]
+
+
+def show_state(space, name):
+    """True / False for a mapped Show-menu item (on when its first Blender setting is on), None when unmapped."""
+    item = next((i for i in SHOW_MENU if isinstance(i, tuple) and i[0] == name), None)
+    if item is None or item[1] is None:
+        return None
+    owner, attr = item[1][0]
+    return bool(getattr(_show_owner(space, owner), attr))
+
+
+def set_show(space, name, on):
+    item = next(i for i in SHOW_MENU if isinstance(i, tuple) and i[0] == name)
+    for owner, attr in item[1] or ():
+        setattr(_show_owner(space, owner), attr, on)
+
+
+class SI_OT_show_toggle(bpy.types.Operator):
+    """Show or hide this kind of element in this viewport (Softimage eye menu)"""
+    bl_idname = "si.show_toggle"
+    bl_label = "Show"
+    bl_options = {'INTERNAL'}
+
+    # SKIP_SAVE: Blender must not remember these between calls, or a single item click after Check None would
+    # re-run Check None (bug report 2026-11-11)
+    item: StringProperty(options={'SKIP_SAVE'})
+    group: StringProperty(options={'SKIP_SAVE'})   # "objects" / "components": Check All / Check None of that group
+    on: bpy.props.BoolProperty(options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.space_data is not None and context.space_data.type == 'VIEW_3D'
+
+    def execute(self, context):
+        space = context.space_data
+        if self.group:
+            names = []
+            for i in SHOW_MENU:
+                if i is None:
+                    continue
+                if isinstance(i, str):
+                    if i == self.group:
+                        break
+                    names = []
+                    continue
+                names.append(i[0])
+            for n in names:
+                if self.group != "objects" or n in _SHOW_OBJECTS:
+                    set_show(space, n, self.on)
+        else:
+            set_show(space, self.item, not show_state(space, self.item))
+        return {'FINISHED'}
+
+
+class SI_MT_show_menu(bpy.types.Menu):
+    bl_idname = "SI_MT_show_menu"
+    bl_label = "Show"
+
+    def draw(self, context):
+        layout = self.layout
+        space = context.space_data
+        for i in SHOW_MENU:
+            if i is None:
+                layout.separator()
+            elif isinstance(i, str):
+                op = layout.operator("si.show_toggle", text="Check All")
+                op.group, op.on = i, True
+                op = layout.operator("si.show_toggle", text="Check None")
+                op.group, op.on = i, False
+            elif i[1] is None:
+                row = layout.row()
+                row.enabled = False
+                row.operator("si.unmapped", text=i[0]).path = "Viewport Show/" + i[0]
+            else:
+                on = show_state(space, i[0])
+                layout.operator("si.show_toggle", text=i[0], icon='CHECKBOX_HLT' if on else 'CHECKBOX_DEHLT').item = i[0]
+
+
 def draw_header(self, context):
     layout = self.layout
     space = context.space_data
     row = layout.row(align=True)
     row.label(text=view_letter(context))
     row.menu("SI_MT_view_menu", text=view_name(space))
+    row.menu("SI_MT_show_menu", text="", icon='HIDE_OFF')       # Softimage's eye: what this viewport shows
     from . import viewport_tools
     viewport_tools.draw_memo_buttons(layout, context)
     layout.popover("VIEW3D_PT_overlay", text="", icon='OVERLAY')
@@ -391,7 +538,8 @@ def draw_header(self, context):
 
 
 classes = (SI_OT_view_set, SI_OT_display_mode, SI_OT_area_editor, SI_OT_maximize, SI_MT_view_cameras,
-           SI_MT_view_spots, SI_MT_view_menu, SI_MT_display_menu, SI_MT_display_realtime)
+           SI_MT_view_spots, SI_MT_view_menu, SI_MT_display_menu, SI_MT_display_realtime, SI_OT_show_toggle,
+           SI_MT_show_menu)
 
 
 def register():

@@ -222,6 +222,7 @@ class SceneObject:
         self.children = []
         self.local = Transform()
         self.glob = Transform()
+        self.glob_read = False    # True when the stored global state was found
         self.primitive = None     # records.Obj of the primitive
         self.mesh = None          # mesh.Mesh for frozen polygon meshes, when decoded
         # Live primitive (no stored geometry): {"type": "sphere", "params": {"radius": 4.0, "subdivu": 8, ...}}
@@ -265,8 +266,10 @@ class Scene:
         self._models_by_storage = {}
         for storage in self._model_storages():
             self._read_model(storage)
-        from . import materials
+        from . import materials, envelope, visibility
         materials.attach(self)
+        envelope.attach(self)
+        visibility.attach(self)
 
     def _model_storages(self):
         out = []
@@ -385,6 +388,7 @@ class Scene:
                         self._fill(state, so.local, ctx["kine_local"])
                     elif ks == "kine_global":
                         self._fill(state, so.glob, ctx["kine_global"])
+                        so.glob_read = True
         if so.kind in ("camera", "light") and so.primitive is not None:
             from . import camlight
             if so.kind == "camera":
@@ -393,10 +397,34 @@ class Scene:
                 so.light = camlight.read_light(st, so.primitive)
         if so.kind == "polymsh":
             so.ops = self._stack_ops(st, so.primitive)
+            if so.mesh is not None and "center" in so.ops:
+                self._apply_centers(st, so)
             if so.mesh is None:
                 so.generator = self._generator(st, so.primitive, shape)
                 if so.generator is None and mesh_error is not None:
                     self.warnings.append("%s: mesh not decoded (%s)" % (so.name, mesh_error))
+
+    # operators that may sit above Move Center on a frozen mesh without changing what it does to the points:
+    # deformers of the animation region work on the result
+    _ABOVE_CENTER = {"envelopop"}
+
+    def _apply_centers(self, st, so):
+        """A frozen mesh with Move Center on top: its points as Softimage shows them (p' = T R S p per operator,
+        io_scn.center). Left as stored, with the operator listed, when something else on the stack could come
+        between them."""
+        from . import center
+        others = [o for o in so.ops if o != "center"]
+        if any(o not in self._ABOVE_CENTER for o in others):
+            return
+        cs = center.read_centers(st, so.primitive)
+        if not cs:
+            self.warnings.append("%s: Move Center not decoded, points as stored" % so.name)
+            return
+        pts = list(so.mesh.points)
+        for c in cs:
+            pts = center.apply_center(pts, c)
+        so.mesh.points = pts
+        so.ops = others
 
     @staticmethod
     def _stack_ops(st, polymsh):
@@ -438,6 +466,9 @@ class Scene:
                 from . import movecomponent
                 # [movecomponent.Move], bottom of the stack first; None when one could not be decoded
                 gen["moves"] = movecomponent.read_moves(st, polymsh)
+            if "center" in gen["ops"]:
+                from . import center
+                gen["centers"] = center.read_centers(st, polymsh)   # [center.Center], or None
         return gen
 
     @staticmethod

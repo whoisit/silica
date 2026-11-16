@@ -19,3 +19,7 @@ Autodesk, Softimage and XSI are registered trademarks or trademarks of Autodesk,
 countries. Blender is a trademark of the Blender Foundation. These names are used here only to describe the
 workflow this software recreates and the software it runs on. Silica recreates behaviour only: it
 contains no Autodesk code, icons, images or documentation text.
+
+Third-party files: src/si_kit/fonts/Inter-Italic.woff2 and Inter-SemiBold.woff2 are the Inter typeface
+(Copyright (c) 2016 The Inter Project Authors, https://github.com/rsms/inter), licensed under the SIL Open Font
+License 1.1 (src/si_kit/fonts/OFL.txt). Blender's own interface uses the same typeface.

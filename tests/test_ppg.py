@@ -70,13 +70,14 @@ def test_every_row_resolves():
     _on()
     _fresh()
     ppg = _m("ui.ppg")
-    for kind in ("CUBE", "SPHERE", "GRID", "CYLINDER", "CONE", "TORUS", "LIGHT_SPOT", "LIGHT_POINT", "CAMERA", "NULL",
+    for kind in ("CUBE", "SPHERE", "GRID", "CYLINDER", "CONE", "TORUS", "LIGHT_SPOT", "LIGHT_POINT", "LIGHT_BOX",
+                 "LIGHT_NEON", "CAMERA", "NULL",
                  "DODECAHEDRON"):
         ob = _make(kind)
         for tab, sections in ppg.property_sets(ob):
             for _title, rows in sections:
                 for path, label, _kw in rows:
-                    if path[0] == "grey":
+                    if path[0] in ("grey", "eye"):
                         continue
                     st, prop = ppg.resolve(ob, path)
                     assert st is not None and hasattr(st, prop), "%s %s %s: %r" % (kind, tab, label, path)
@@ -88,9 +89,19 @@ def test_light_tabs():
     ppg = _m("ui.ppg")
     spot = _make("LIGHT_SPOT")
     tabs = [t for t, _ in ppg.property_sets(spot)]
-    assert tabs[0] == "Light" and "Kinematics" in tabs
-    labels = [label for _t, rows in dict(ppg.property_sets(spot))["Light"] for _p, label, _k in rows]
-    assert "Cone Angle" in labels and "Intensity" in labels
+    assert tabs[:2] == ["Light", "soft_light"] and "Kinematics" in tabs, tabs
+    sets = dict(ppg.property_sets(spot))
+    light = {title: rows for title, rows in sets["Light"]}
+    shader = {title: rows for title, rows in sets["soft_light"]}
+    labels = lambda rows: [label or path[1] for path, label, _k in rows]
+    assert "Cone Angle" in labels(light["General"])
+    # Light Contribution (user question 2026-11-11): Diffuse / Specular drive Blender's factors, Ambient is greyed
+    contrib = {(label or path[1]): path for path, label, _k in light["Light Contribution"]}
+    assert contrib["Diffuse"] == ("data", "diffuse_factor") and contrib["Specular"] == ("data", "specular_factor")
+    assert contrib["Ambient"][0] == "grey"
+    assert "Intensity" in labels(shader["Colors"]) and "Enabled" in labels(shader["Shadows"])
+    st, prop = ppg.resolve(spot, ("path", "ob", "light_linking", "receiver_collection"))
+    assert st is not None and prop == "receiver_collection"
 
 
 def test_revert_enums_and_rotation_mode():
