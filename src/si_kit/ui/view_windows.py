@@ -45,13 +45,10 @@ def _setup(view, window, area):
         sp.show_restrict_column_viewport = True
         sp.show_restrict_column_select = True
         sp.show_restrict_column_render = True
-    elif view == 'SCHEMATIC':              # stand-in: objects as a parent / child hierarchy
-        area.type = 'OUTLINER'
-        sp = area.spaces.active
-        sp.display_mode = 'VIEW_LAYER'
-        sp.use_filter_object = True
-        sp.use_filter_children = True
-        sp.use_filter_collection = False
+    elif view == 'SCHEMATIC':              # Silica's Schematic (spec schematic.canvas)
+        from .schematic import TREE, setup_space
+        area.ui_type = TREE
+        setup_space(area.spaces.active)
     elif view == 'RENDER_TREE':
         area.ui_type = 'ShaderNodeTree'
     elif view == 'ANIMATION':

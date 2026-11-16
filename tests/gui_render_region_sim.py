@@ -9,7 +9,9 @@ rr = sys.modules[K + ".ops.render_region"]
 mode = sys.modules[K + ".mode"]
 win = bpy.context.window_manager.windows[0]
 scene = bpy.context.scene
-errors, steps = [], []
+from _gui import Run
+R = Run("REGION", step=0.12)
+s, check, errors = R.s, R.check, R.errors
 
 
 def views():
@@ -26,28 +28,6 @@ def reg(area, t='WINDOW'):
 
 def ev(t, v, x, y):
     win.event_simulate(type=t, value=v, x=int(x), y=int(y))
-
-
-def s(fn, wait=0.12):
-    steps.append((fn, wait))
-
-
-def check(cond, msg):
-    if not cond:
-        errors.append(msg)
-
-
-def run():
-    if not steps:
-        print("SHOT: REGION", "PASS" if not errors else "FAIL " + " | ".join(errors))
-        return None
-    fn, wait = steps.pop(0)
-    try:
-        fn()
-    except Exception:
-        import traceback
-        errors.append(traceback.format_exc()[-400:])
-    return wait
 
 
 def center():
@@ -221,4 +201,4 @@ def after_off():
 s(after_off)
 s(lambda: mode.enter_mode(), 0.5)
 
-bpy.app.timers.register(run, first_interval=0.5)
+R.start(0.5)

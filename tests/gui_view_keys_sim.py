@@ -9,19 +9,9 @@ import bpy, importlib
 K = "bl_ext.user_default.silica"
 wm = bpy.context.window_manager
 win = wm.windows[0]
-errors, steps, S = [], [], {}
-def s(fn, w=0.2): steps.append((fn, w))
-def check(c, m):
-    if not c: errors.append(m)
-def run():
-    if not steps:
-        print("SHOT: VIEWKEYS", "PASS" if not errors else "FAIL " + " | ".join(errors))
-        return None
-    fn, w = steps.pop(0)
-    try: fn()
-    except Exception:
-        import traceback; tb = traceback.format_exc().strip().splitlines(); errors.append(" / ".join(tb[-3:]))
-    return w
+from _gui import Run
+R = Run("VIEWKEYS", step=0.2)
+s, check, errors, S, steps = R.s, R.check, R.errors, R.S, R.steps
 def mod(name): return importlib.import_module(K + "." + name)
 def mv(x, y): win.event_simulate(type='MOUSEMOVE', value='NOTHING', x=int(x), y=int(y))
 def key(t, **k):
@@ -122,8 +112,8 @@ def editor_ok(view, w):
     if view == "EXPLORER":
         return None if a.type == 'PROPERTIES' and mod("ui.docks").space_role(sp) == "EXPLORER" else "is %s" % a.type
     if view == "SCHEMATIC":
-        return None if a.type == 'OUTLINER' and sp.use_filter_object and sp.use_filter_children and \
-            not sp.use_filter_collection else "is %s (not an object hierarchy)" % a.type
+        return None if a.type == 'NODE_EDITOR' and a.ui_type == 'SI_SchematicTree' else \
+            "is %s / %s (not Silica's Schematic)" % (a.type, a.ui_type)
     if view == "ANIMATION":
         return None if a.ui_type == 'FCURVES' else "is %s" % a.ui_type
 for t, view in VIEWS:
@@ -173,4 +163,4 @@ def c6():
     check(not left, "C6 digit keys left: %r" % left[:5])
     mode.enter_mode()
 s(c6, 0.6)
-bpy.app.timers.register(run, first_interval=0.8)
+R.start(0.8)

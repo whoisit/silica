@@ -53,7 +53,7 @@ SHADING_LABEL = {'WIREFRAME': "Wireframe", 'SOLID': "Shaded", 'MATERIAL': "Realt
 
 # Softimage editor name -> Blender area ui_type (None = greyed)
 EDITORS = (
-    ("Render Tree", 'ShaderNodeTree'), ("Explorer", 'EXPLORER'), ("Schematic", None), ("ICE Tree", 'GeometryNodeTree'),
+    ("Render Tree", 'ShaderNodeTree'), ("Explorer", 'EXPLORER'), ("Schematic", 'SI_SchematicTree'), ("ICE Tree", 'GeometryNodeTree'),
     ("Object View", None), None,
     ("Animation Editor", 'FCURVES'), ("DopeSheet", 'DOPESHEET'), ("Animation Mixer", 'NLA_EDITOR'),
     ("Shape Manager", None), None,
@@ -270,6 +270,9 @@ class SI_OT_area_editor(bpy.types.Operator):
             context.area.ui_type = self.ui_type
         except TypeError:
             return {'CANCELLED'}
+        if self.ui_type == 'SI_SchematicTree':
+            from .schematic import setup_space
+            setup_space(context.area.spaces.active)
         return {'FINISHED'}
 
 

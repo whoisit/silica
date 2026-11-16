@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Alex Doss
-# WAIT: 55
+# WAIT: 120
 """Property Editor through the real UI (simulated mouse), the criteria the audit found untested
 (spec properties.ppg): C1 the Explorer icon opens the PPG without selecting, the name selects; C3 Ctrl+wheel on
 Length / Subdivisions U changes the mesh live and one Ctrl+Z undoes one edit; C4 a divot click keys the value,
 a second click unkeys it; C6 the docked pane's Revert point is renewed when the pane is opened again.
+Merged in 2026-11-16 (test audit, was gui_ppg_sim.py): every tab of every object type draws without errors, Enter
+opens the PPG of the selection, Recycle and Lock (by reference), popup on creation (pane / no pane / preference
+off), the pane counts as a viewport pane, mode off removes every kit pane and setting.
 Fields are found by hovering points in the pane and asking Blender for the data path under the mouse
 (technique from the auditor's probe)."""
 import bpy, importlib
@@ -13,19 +16,9 @@ ppg = importlib.import_module(K + ".ui.ppg")
 docks = importlib.import_module(K + ".ui.docks")
 win = bpy.context.window_manager.windows[0]
 wm = bpy.context.window_manager
-errors, steps, S = [], [], {}
-def s(fn, w=0.25): steps.append((fn, w))
-def check(c, m):
-    if not c: errors.append(m)
-def run():
-    if not steps:
-        print("SHOT: PPGUI", "PASS" if not errors else "FAIL " + " | ".join(errors))
-        return None
-    fn, w = steps.pop(0)
-    try: fn()
-    except Exception:
-        import traceback; errors.append(traceback.format_exc()[-300:])
-    return w
+from _gui import Run
+R = Run("PPGUI", step=0.25)
+s, check, errors, S, steps = R.s, R.check, R.errors, R.S, R.steps
 def views(): return sorted((a for a in win.screen.areas if a.type == 'VIEW_3D'), key=lambda a: (-a.y, a.x))
 def reg(a, t='WINDOW'): return next(r for r in a.regions if r.type == t)
 def role_area(role):
@@ -210,7 +203,7 @@ for row in range(6):
         E = role_area("EXPLORER"); r = reg(E)
         S["before"] = sorted(o.name for o in bpy.context.selected_objects)
         wm.si_ppg_popup_target = None
-        u = 20 * bpy.context.preferences.system.ui_scale     # UI unit (includes Windows display scaling)
+        u = importlib.import_module(K + ".ui.explorer").unit()   # Blender's widget unit (incl. display scaling)
         S["icon_xy"] = (r.x + int(2.9 * u), r.y + r.height - int(0.7 * u + u * row))   # depth-1 icon
         click(*S["icon_xy"])
     def icon_chk():
@@ -226,4 +219,120 @@ for row in range(6):
     s(icon_chk, 0.25)
 s(lambda: check(S.get("icon_ok"), "C1 clicking the cube's icon in the Explorer did not open its PPG"), 0.05)
 
-bpy.app.timers.register(run, first_interval=0.8)
+
+# ---- from gui_ppg_sim.py (merged 2026-11-16, test audit) ------------------------------------------------------
+prefs = importlib.import_module(K + ".prefs")
+mode = importlib.import_module(K + ".mode")
+vp = importlib.import_module(K + ".ui.viewport")
+def B(): return views()[-1]
+
+# every tab of every object type DRAWS without errors (the Visibility bug found in review), in a docked pane
+def all_types():
+    E = role_area("EXPLORER")
+    with bpy.context.temp_override(window=win, area=E, region=reg(E)):
+        bpy.ops.si.view_set(view='TOP')
+    b = B()
+    with bpy.context.temp_override(window=win, area=b, region=reg(b)):
+        for k in ("LIGHT_SPOT", "CAMERA", "NULL", "DODECAHEDRON"):
+            bpy.ops.si.get_primitive(kind=k)
+    a = views()[0]
+    with bpy.context.temp_override(window=win, area=a, region=reg(a)):
+        bpy.ops.si.ppg_show()
+    wm.si_ppg_popup_target = None
+s(all_types, 0.5)
+def queue_draw_all():
+    """One step per (object, tab): select, show the tab, let Blender redraw for real, then check."""
+    ppg.draw_errors.clear()
+    queued = []
+    for name in [o.name for o in bpy.context.scene.objects]:
+        for tab, _sections in ppg.property_sets(bpy.data.objects[name]):
+            def show(name=name, tab=tab):
+                select_only(name)
+                wm.si_ppg_tab = tab
+                ppg.drawn_rows.pop(tab, None)
+                role_area("PPG").tag_redraw()
+            def verify(name=name, tab=tab):
+                check(ppg.drawn_rows.get(tab, 0) > 0 or tab == "Polygon Mesh", "%s / %s: nothing drawn" % (name, tab))
+            queued += [(show, 0.12), (verify, 0.0)]
+    steps[0:0] = queued
+s(queue_draw_all, 0.0)
+s(lambda: check(not ppg.draw_errors, "draw errors: %s" % ppg.draw_errors[:3]), 0.1)
+
+# Enter over a 3D view opens the PPG of the selection (the cube)
+def enter():
+    select_only("cube")
+    r = reg(B())
+    x, y = r.x + 100, r.y + 100
+    mv(x, y)
+    win.event_simulate(type='RET', value='PRESS', x=x, y=y)
+    win.event_simulate(type='RET', value='RELEASE', x=x, y=y)
+s(enter, 0.4)
+s(lambda: check(wm.si_ppg_popup_target is not None and wm.si_ppg_popup_target.name == "cube",
+                "Enter: popup target %r" % wm.si_ppg_popup_target))
+s(esc, 0.3)
+
+# Recycle follows the selection, Lock keeps the object (by reference: survives a rename)
+def recycle_lock():
+    P = role_area("PPG")
+    select_only("cube")
+    with bpy.context.temp_override(window=win, area=P, region=reg(P)):
+        check(ppg.pane_target(bpy.context).name == "cube", "Recycle: pane does not follow the selection")
+        bpy.ops.si.ppg_lock()
+    check(wm.si_ppg_lock and wm.si_ppg_target.name == "cube", "Lock did not lock on the cube")
+    bpy.data.objects["cube"].name = "box"
+    select_only("sphere")
+    with bpy.context.temp_override(window=win, area=P, region=reg(P)):
+        check(ppg.pane_target(bpy.context).name == "box", "Lock lost the renamed object")
+        bpy.ops.si.ppg_lock()
+        check(ppg.pane_target(bpy.context).name == "sphere", "Unlock: back to Recycle")
+    bpy.data.objects["box"].name = "cube"
+    for o in bpy.context.view_layer.objects:              # nothing selected -> nothing shown
+        o.select_set(False)
+    with bpy.context.temp_override(window=win, area=P, region=reg(P)):
+        check(ppg.pane_target(bpy.context) is None, "Recycle shows a deselected object")
+s(recycle_lock, 0.3)
+
+# popup on creation: a docked Recycle pane already shows the new object -> no popup
+def create(kind, on):
+    def go():
+        prefs.get().ppg_on_create = on
+        wm.si_ppg_popup_target = None
+        b = B()
+        with bpy.context.temp_override(window=win, area=b, region=reg(b)):
+            bpy.ops.si.get_primitive(kind=kind)
+    return go
+s(create("TORUS", True), 0.5)
+s(lambda: check(wm.si_ppg_popup_target is None, "popup opened although a Recycle pane follows the selection"))
+def remove_pane():
+    P = role_area("PPG")
+    with bpy.context.temp_override(window=win, area=P, region=reg(P)):
+        bpy.ops.si.view_set(view='TOP')
+s(remove_pane, 0.3)
+s(create("CONE", True), 0.5)                              # no pane, preference on -> popup on the new object
+s(lambda: check(wm.si_ppg_popup_target is not None and wm.si_ppg_popup_target.name == "cone",
+                "popup on creation: %r" % wm.si_ppg_popup_target))
+s(esc, 0.3)
+s(create("CONE", False), 0.5)                             # preference off -> no popup
+s(lambda: (check(wm.si_ppg_popup_target is None, "popup although the preference is off"),
+           setattr(prefs.get(), "ppg_on_create", False)))   # as the runner set it (it restores the user's value)
+
+# the PPG pane counts as one of the four viewport panes
+def pane_again():
+    a = views()[0]
+    with bpy.context.temp_override(window=win, area=a, region=reg(a)):
+        bpy.ops.si.ppg_show()
+    check(sum(1 for a in win.screen.areas if vp._is_pane(a)) == 4, "PPG pane not counted as a viewport pane")
+s(pane_again, 0.3)
+
+# mode off: panels / settings gone, and no kit pane left in any screen
+def off_on():
+    mode.exit_mode()
+    check(not hasattr(bpy.types.WindowManager, "si_ppg_lock"), "mode off left PPG properties")
+    check(not hasattr(bpy.types, "SI_PT_ppg_pane"), "mode off left the PPG panel")
+    left = [a for scr in bpy.data.screens for a in scr.areas
+            if a.type == 'PROPERTIES' and docks.space_role(a.spaces.active) in docks.PANE_ROLES]
+    check(not left, "mode off left %d kit panes" % len(left))
+    mode.enter_mode()
+s(off_on, 0.6)
+
+R.start(0.8)

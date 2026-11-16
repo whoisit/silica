@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Alex Doss
 """Simulated keyboard/mouse: Softimage sticky/supra tools, drag-anywhere transform, S navigation, Q region,
-clean views, mode off while a sticky tool runs.
+clean views, mode off while a sticky tool runs; the keymap and header round trip through mode off / on.
 Run: python -I tools/dev.py shot OUT.png --mode on --simulate 1 --wait 1 --script tests/gui_keys_sim.py"""
 import bpy, sys
 K = "bl_ext.user_default.silica"
@@ -11,33 +11,13 @@ win = bpy.context.window_manager.windows[0]
 views = sorted((a for a in win.screen.areas if a.type == 'VIEW_3D'), key=lambda a: (-a.y, a.x))
 B = views[1]
 cx, cy = B.x + B.width // 2, B.y + B.height // 2
-errors = []
-steps = []
+from _gui import Run
+R = Run("SIM", step=0.2)
+s, check, errors, steps = R.s, R.check, R.errors, R.steps
 
 
 def ev(t, v, x=None, y=None):
     win.event_simulate(type=t, value=v, x=cx if x is None else x, y=cy if y is None else y)
-
-
-def s(fn, wait=0.2):
-    steps.append((fn, wait))
-
-
-def check(cond, msg):
-    if not cond:
-        errors.append(msg)
-
-
-def run():
-    if not steps:
-        print("SHOT: SIM", "PASS" if not errors else "FAIL " + "; ".join(errors))
-        return None
-    fn, wait = steps.pop(0)
-    try:
-        fn()
-    except Exception as e:
-        errors.append("%s: %r" % (getattr(fn, "__name__", "?"), e))
-    return wait
 
 
 def setup():
@@ -118,4 +98,31 @@ s(lambda: ev('LEFTMOUSE', 'RELEASE'), 0.2)
 s(lambda: check(not mode.is_on(), "mode still on"))
 s(lambda: mode.enter_mode(), 0.5)
 
-bpy.app.timers.register(run, first_interval=0.5)
+
+# keys and header added in the mode and fully removed when it is switched off (was gui_mode_keys.py, merged
+# 2026-11-16, test audit)
+def keymap_round_trip():
+    keymap = sys.modules[K + ".keymap"]
+    viewport = sys.modules[K + ".ui.viewport"]
+    kc = bpy.context.window_manager.keyconfigs.addon
+    def si_items():
+        ours = [i for _, i in keymap._items]
+        return sum(1 for km in kc.keymaps for kmi in km.keymap_items if kmi.idname.startswith("si.") or kmi in ours)
+    check(mode.is_on(), "mode not on")
+    n_on = si_items()
+    check(n_on >= 100, "too few Softimage keys: %d" % n_on)
+    check(any(kmi.type == 'S' and kmi.idname == "si.tool_key" for km in kc.keymaps if km.name == "3D View"
+              for kmi in km.keymap_items), "S not bound in 3D View")
+    check(any(kmi.type == 'TAB' and kmi.idname == "si.node_tab" for km in kc.keymaps if km.name == "Node Editor"
+              for kmi in km.keymap_items), "Tab not bound to the node Add menu (si.node_tab)")
+    blender_draw = viewport._orig.get("draw")
+    check(bpy.types.VIEW3D_HT_header.draw is viewport.draw_header, "Softimage viewport header not active")
+    mode.exit_mode()
+    left = sum(1 for km in kc.keymaps for kmi in km.keymap_items if kmi.idname.startswith("si."))
+    check(not left and not keymap._items, "%d si.* key items left after mode off" % left)
+    check(bpy.types.VIEW3D_HT_header.draw is blender_draw, "Blender header not restored")
+    mode.enter_mode()
+    check(si_items() == n_on, "keys after re-enter: %d != %d" % (si_items(), n_on))
+s(keymap_round_trip, 0.3)
+
+R.start(0.5)

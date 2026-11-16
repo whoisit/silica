@@ -14,19 +14,9 @@ win = bpy.context.window_manager.windows[0]
 views = sorted((a for a in win.screen.areas if a.type == 'VIEW_3D'), key=lambda a: (-a.y, a.x))
 B = views[1]
 region = next(r for r in B.regions if r.type == 'WINDOW')
-errors, steps = [], []
-def s(fn, w=0.15): steps.append((fn, w))
-def check(c, m):
-    if not c: errors.append(m)
-def run():
-    if not steps:
-        print("SHOT: GIZMO_NORMAL", "PASS" if not errors else "FAIL " + " | ".join(errors))
-        return None
-    fn, w = steps.pop(0)
-    try: fn()
-    except Exception:
-        import traceback; errors.append(traceback.format_exc()[-400:])
-    return w
+from _gui import Run
+R = Run("GIZMO_NORMAL", step=0.15)
+s, check, errors, steps = R.s, R.check, R.errors, R.steps
 def ev(t, v, x, y): win.event_simulate(type=t, value=v, x=int(x), y=int(y))
 
 
@@ -111,4 +101,4 @@ def case(orient):
 case('NORMAL')     # the user's setting
 case('LOCAL')      # Softimage Local in component mode = the component's frame
 
-bpy.app.timers.register(run, first_interval=0.6)
+R.start(0.6)

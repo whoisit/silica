@@ -9,19 +9,9 @@ import bpy, importlib
 K = "bl_ext.user_default.silica"
 wm = bpy.context.window_manager
 win = wm.windows[0]
-errors, steps, S = [], [], {}
-def s(fn, w=0.2): steps.append((fn, w))
-def check(c, m):
-    if not c: errors.append(m)
-def run():
-    if not steps:
-        print("SHOT: DRAG", "PASS" if not errors else "FAIL " + " | ".join(errors))
-        return None
-    fn, w = steps.pop(0)
-    try: fn()
-    except Exception:
-        import traceback; tb = traceback.format_exc().strip().splitlines(); errors.append(" / ".join(tb[-3:]))
-    return w
+from _gui import Run
+R = Run("DRAG", step=0.2)
+s, check, errors, S, steps = R.s, R.check, R.errors, R.S, R.steps
 def ex(): return importlib.import_module(K + ".ui.explorer")
 def views3d(): return sorted((a for a in win.screen.areas if a.type == 'VIEW_3D'), key=lambda a: (-a.y, a.x))
 def reg(a): return next(r for r in a.regions if r.type == 'WINDOW')
@@ -165,4 +155,4 @@ s(c6, 0.05)
 def back():
     wm.si_explorer_filter = 'ALL'
 s(back, 0.05)
-bpy.app.timers.register(run, first_interval=0.8)
+R.start(0.8)

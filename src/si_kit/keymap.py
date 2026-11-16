@@ -61,9 +61,26 @@ NUMBER_KEYMAPS = KEYMAPS + ("Outliner", "Node Editor", "Window")
 EDIT_MESH = (
     ('A', 1, 0, 0, "mesh.select_all", {"action": 'SELECT'}, "Select All"),
     ('D', 0, 0, 0, "mesh.duplicate_move", {}, "Duplicate Tool"),
+    ('D', 1, 0, 0, "mesh.extrude_region_move", {}, "Duplicate/Extrude Single"),
+    ('D', 0, 1, 0, "mesh.subdivide", {}, "Subdivide"),
 )
+# Softimage defaults on objects (keymap capture, context "XSI"), each onto Blender's own operator
 OBJECT = (
     ('A', 1, 0, 0, "object.select_all", {"action": 'SELECT'}, "Select All"),
+    ('D', 1, 0, 0, "object.duplicate", {"linked": False}, "Duplicate Single"),
+    ('I', 1, 0, 0, "object.duplicate", {"linked": True}, "Instantiate Single (a linked duplicate: shares the data)"),
+    ('SLASH', 1, 0, 0, "object.parent_clear", {"type": 'CLEAR_KEEP_TRANSFORM'}, "Cut Hierarchical Link"),
+    ('UP_ARROW', 0, 0, 1, "object.select_hierarchy", {"direction": 'PARENT', "extend": False}, "Select Parent"),
+    ('DOWN_ARROW', 0, 0, 1, "object.select_hierarchy", {"direction": 'CHILD', "extend": False},
+     "Select First Child"),
+    ('UP_ARROW', 0, 1, 1, "object.select_hierarchy", {"direction": 'PARENT', "extend": True},
+     "Add Parent to Selection"),
+    ('DOWN_ARROW', 0, 1, 1, "object.select_hierarchy", {"direction": 'CHILD', "extend": True},
+     "Add First Child to Selection"),
+    ('T', 1, 0, 0, "object.select_grouped", {"type": 'CHILDREN_RECURSIVE', "extend": True}, "Select Tree"),
+    ('G', 1, 0, 0, "collection.create", {}, "Create Group from Objects"),
+    ('H', 0, 1, 0, "si.unhide_all", {}, "Unhide All Objects"),
+    ('R', 1, 1, 0, "si.reset_transforms", {}, "Reset All Transforms"),
 )
 # Render Tree: Tab opens the node Add menu with search, like Softimage (user, 2026-11-01). Only in the Softimage
 # workspace's Shader Editor (si.node_tab passes through elsewhere, so Blender's Tab = group edit stays in Geometry

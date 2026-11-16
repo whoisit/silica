@@ -7,7 +7,9 @@ import bpy, sys
 K = "bl_ext.user_default.silica"
 vt = sys.modules[K + ".ui.viewport_tools"]
 win = bpy.context.window_manager.windows[0]
-errors, steps = [], []
+from _gui import Run
+R = Run("VIEWTOOLS", step=0.25)
+s, check, errors = R.s, R.check, R.errors
 
 
 def panes():
@@ -22,28 +24,6 @@ def others():
     names = ("PROPERTIES", "DOPESHEET_EDITOR")
     return sorted((a.type, a.x, a.y, a.width, a.height) for a in win.screen.areas
                   if a not in panes() and a.type in names)
-
-
-def s(fn, wait=0.25):
-    steps.append((fn, wait))
-
-
-def check(cond, msg):
-    if not cond:
-        errors.append(msg)
-
-
-def run():
-    if not steps:
-        print("SHOT: VIEWTOOLS", "PASS" if not errors else "FAIL " + " | ".join(errors))
-        return None
-    fn, wait = steps.pop(0)
-    try:
-        fn()
-    except Exception:
-        import traceback
-        errors.append(traceback.format_exc()[-400:])
-    return wait
 
 
 def maxi(i, how):
@@ -147,4 +127,4 @@ def memo():
         check(vt.memo_slot(win.screen, a, 0) is None, "M4 clear failed")
 s(memo)
 
-bpy.app.timers.register(run, first_interval=0.6)
+R.start(0.6)

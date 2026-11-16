@@ -311,9 +311,9 @@ def test_sync_at_10k():
     t = time.perf_counter()
     P.sync(sc)
     took = time.perf_counter() - t
+    print("passes sync 10k: %.0f ms" % (took * 1000))
     assert took < 1.0, "sync took %.2f s" % took
     _exclusive(sc)
     obs = list(sc.objects)
     bpy.data.scenes.remove(sc)
-    for ob in obs:
-        bpy.data.objects.remove(ob)
+    bpy.data.batch_remove(obs)

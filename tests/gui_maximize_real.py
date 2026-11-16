@@ -9,19 +9,9 @@ import bpy, sys
 K = "bl_ext.user_default.silica"
 vt = sys.modules[K + ".ui.viewport_tools"]
 win = bpy.context.window_manager.windows[0]
-errors, steps = [], []
-def s(fn, w=0.3): steps.append((fn, w))
-def check(c, m):
-    if not c: errors.append(m)
-def run():
-    if not steps:
-        print("SHOT: MAXREAL", "PASS" if not errors else "FAIL " + " | ".join(errors))
-        return None
-    fn, w = steps.pop(0)
-    try: fn()
-    except Exception:
-        import traceback; errors.append(traceback.format_exc()[-300:])
-    return w
+from _gui import Run
+R = Run("MAXREAL", step=0.3)
+s, check, errors, steps = R.s, R.check, R.errors, R.steps
 def rects(): return [(a.x, a.y, a.width, a.height) for a in vt.panes(win.screen)]
 def start():
     global base, B
@@ -38,4 +28,4 @@ s(lambda: check(vt.is_maximized(win.screen) and B.width > 0.85 * (base[0][2] + b
                 "real cursor over view: not maximized %r" % (rects(),)))
 s(invoke, 1.2)
 s(lambda: check(not vt.is_maximized(win.screen) and rects() == base, "real cursor: restore not exact %r vs %r" % (rects(), base)))
-bpy.app.timers.register(run, first_interval=0.8)
+R.start(0.8)

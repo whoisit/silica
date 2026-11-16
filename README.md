@@ -5,11 +5,12 @@
 ![Silica in Blender 5.2: Softimage layout, module toolbar, MCP and four views](docs/images/silica-layout.png)
 
 Silica is a free, open-source extension for Blender 5.2 that brings back the Softimage way of working: the
-theme, the layout, the menus, the MCP, the Explorer, property pages, viewport views and the core keys. One click
+theme, the layout, the menus, the MCP, the Explorer, the Schematic, property pages, viewport views and the core
+keys. One click
 switches it all off and gives you plain Blender again. It also opens real Softimage `.scn` files, rebuilding
 meshes, primitives, cameras, lights, materials, UVs and image textures.
 
-> **Early release (0.1).** Made for ex-Softimage artists who want their hands to feel at home in Blender.
+> **Early release (0.3).** Made for ex-Softimage artists who want their hands to feel at home in Blender.
 > A lot is still missing (see [What's not there yet](#whats-not-there-yet)). Feedback is very welcome.
 
 ## Install
@@ -32,7 +33,9 @@ Requires **Blender 5.2** or newer.
   - S navigation, Z pan/zoom, O orbit, P dolly
   - V / C / X translate / rotate / scale, Space select
   - T / E / Y / U / I component selection
-  - A / F frame all / selection, R reset camera, H hide, G grid, D duplicate, K key
+  - A / F frame all / selection, R reset camera, H hide (Shift+H unhide all), G grid, D duplicate, K key
+  - Ctrl+D duplicate, Ctrl+I instantiate, Ctrl+/ cut the parent link, Ctrl+T select tree, Ctrl+G group,
+    Alt+Up / Alt+Down parent / first child, Ctrl+Shift+R reset all transforms
   - Q render region, F12 maximize the view under the mouse, Enter opens the property page
   - 1-4 module toolbars, 5-0 floating Browser, Layers, Render Tree, Explorer, Schematic, Animation Editor
 - **Explorer:** the scene tree drawn the Softimage way (colours, italics, selection boxes), fast on scenes
@@ -40,6 +43,12 @@ Requires **Blender 5.2** or newer.
   Softimage's click, middle-click (branch) and Shift / Ctrl selection, arrow and NumPad keys, F2 rename, right-click
   menus, and drag and drop: parent / unparent, Ctrl to duplicate, objects into partitions and passes, materials
   onto objects.
+- **Schematic view** (key 9, or a view's menu): the scene as Softimage's node graph, fast with thousands of
+  objects. Node colours by type, hierarchy lines, and C / E / A / V letters for constraints, expressions,
+  animation and envelopes. Left click picks a node, middle a branch, right a tree; box select; Alt+drag
+  parents; M moves nodes (the whole selection) and the positions are saved with the scene; N collapses a
+  branch; Rearrange (Shift+R / Ctrl+R); relation links for constraints, drivers, modifiers, materials and
+  instances, with a Show menu to pick which.
 - **Render passes and partitions:** passes are Blender view layers, partitions are collections; Render > Pass
   makes, duplicates and deletes passes and moves objects between partitions. Partition overrides (visibility,
   matte, primary rays) map onto Blender's per-view-layer settings, and 15 of Softimage's pass presets (mattes,
@@ -60,10 +69,10 @@ Requires **Blender 5.2** or newer.
 
 ## What's not there yet
 
-- Many keys and tools are missing. Examples: M to tweak components, +/− subdivision, Reset SRT, isolate
-  selection.
-- Animation, the Mixer, ICE, a real Schematic view (key 9 opens Blender's Outliner for now), scene layers, a
-  material on one partition only.
+- Many keys and tools are missing. Examples: M to tweak components, +/− subdivision, isolate selection, the
+  F7-F11 selection tools, the animation keys.
+- Animation, the Mixer, ICE, scene layers, a material on one partition only. In the Schematic: the object-type
+  filters and scopes of its Show menu.
 - Import: no animation, shape keys or IK chains yet. Live primitives get no UVs. Some scenes from older
   Softimage versions only partly load.
 

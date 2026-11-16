@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Alex Doss
-"""si.import_scn against the private scene corpus (skipped when it is absent)."""
+"""si.import_scn against the private scene corpus. Without the corpus (or the Softimage dumps) a test raises Skip
+(tests/run.py: reported as skipped, a failure where private data is required); with it, every case a test names
+must be there."""
 import importlib
 import os
 
@@ -8,6 +10,7 @@ import bpy
 from mathutils import Vector
 
 KIT = None  # set by run.py
+Skip = Exception  # replaced by run.py's Skip
 CORPUS = os.path.abspath(os.environ.get("SI_SCN_CORPUS", os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..", "si-blender", "reference", "scn_project", "Scenes")))
 
@@ -17,7 +20,12 @@ def _m(name):
 
 
 def _have(name):
-    return os.path.isfile(os.path.join(CORPUS, name + ".scn"))
+    """True when the corpus case exists. No corpus at all: Skip. A corpus without a case the test names fails: the
+    corpus is generated as a whole (tools/sicapture), so a missing case means a stale corpus or a renamed case."""
+    if not os.path.isdir(CORPUS):
+        raise Skip("scene corpus not found at %s" % CORPUS)
+    assert os.path.isfile(os.path.join(CORPUS, name + ".scn")), "corpus case missing: %s (regenerate the corpus)" % name
+    return True
 
 
 def _import(name):
@@ -33,8 +41,7 @@ def _import(name):
 
 
 def test_names_and_parents():
-    if not _have("null_parented"):
-        return
+    _have("null_parented")
     obs = _import("null_parented")
     for n in ("Camera_Root", "Camera", "Camera_Interest", "light", "n1", "n2"):
         assert n in obs, (n, list(obs.keys()))
@@ -46,8 +53,7 @@ def test_names_and_parents():
 
 
 def test_translation_axis_conversion():
-    if not _have("null_pos123"):
-        return
+    _have("null_pos123")
     obs = _import("null_pos123")
     p = obs["n1"].matrix_world.translation
     # Softimage (1, 2, 3) -> Blender (x, -z, y) = (1, -3, 2)
@@ -55,8 +61,7 @@ def test_translation_axis_conversion():
 
 
 def test_camera_world_position_and_direction():
-    if not _have("camera"):
-        return
+    _have("camera")
     obs = _import("camera")
     cam = obs["Camera"]
     p = cam.matrix_world.translation
@@ -69,24 +74,25 @@ def test_camera_world_position_and_direction():
 
 def test_mesh_counts():
     for name, npts, npolys in (("cube_frozen", 8, 6), ("grid_3x2", 12, 6)):
-        if not _have(name):
-            continue
+        _have(name)
         meshes = [o for o in _import(name).values() if o.type == 'MESH']
         assert len(meshes) == 1, (name, meshes)
         me = meshes[0].data
         assert (len(me.vertices), len(me.polygons)) == (npts, npolys), (name, len(me.vertices), len(me.polygons))
 
 
-def test_mesh_fan_matches_reader():
-    if not _have("mesh_fan"):
-        return
-    sc = _m("io_scn.scene").read(os.path.join(CORPUS, "mesh_fan.scn"))
-    want = [o for o in sc.objects if o.mesh is not None][0]
+def test_mesh_fan_matches_softimage():
+    """The imported fan mesh against Softimage's own export (mesh_fan.json), not against the reader."""
+    import json
+    _have("mesh_fan")
+    want = [o for o in json.load(open(os.path.join(CORPUS, "mesh_fan.json")))["objects"] if o.get("mesh")][0]
     got = [o for o in _import("mesh_fan").values() if o.type == 'MESH'][0]
-    assert got.name == want.name
-    assert len(got.data.vertices) == len(want.mesh.points)
-    assert len(got.data.polygons) == len(want.mesh.polygons)
-    assert sorted(len(p.vertices) for p in got.data.polygons) == sorted(len(f) for f in want.mesh.polygons)
+    assert got.name == want["name"], (got.name, want["name"])
+    pts = [(x, -z, y) for x, y, z in want["mesh"]["points"]]       # Softimage Y-up -> Blender Z-up
+    assert len(got.data.vertices) == len(pts)
+    for v, w in zip(got.data.vertices, pts):
+        assert (v.co - Vector(w)).length < 1e-4, (tuple(v.co), w)
+    assert sorted(tuple(p.vertices) for p in got.data.polygons) == sorted(tuple(f) for f in want["mesh"]["polygons"])
 
 
 def test_mesh_arrays_past_65535_nodes():
@@ -133,8 +139,7 @@ def test_live_primitives_rebuilt():
     kinds = sorted({n.split("_")[0] for n in EXACT} | {"disc"})
     for kind in kinds:
         case = "prim_" + kind
-        if not _have(case):
-            continue
+        _have(case)
         import json
         truth = {o["name"]: o for o in json.load(open(os.path.join(CORPUS, case + ".json")))["objects"]}
         obs = _import(case)
@@ -240,8 +245,7 @@ def _near(a, b, eps=1e-4):
 def test_materials_shared_inherited_default_unused():
     """C3, C4: one Blender material per used Softimage material, shared like in Softimage; inherited and default
     materials assigned directly; unused library materials not imported."""
-    if not _have("mat_shared"):
-        return
+    _have("mat_shared")
     objs, _ = _build(os.path.join(CORPUS, "mat_shared.scn"))
     a, b, d = objs["cubeA"], objs["cubeB"], objs["cubeDefault"]
     assert a.material_slots[0].material is b.material_slots[0].material is _mat("DefaultLib.SharedMat")
@@ -259,8 +263,7 @@ def test_materials_shared_inherited_default_unused():
 
 def test_cluster_materials():
     """C4: object material in slot 1, a polygon cluster's material in another slot on exactly its polygons."""
-    if not _have("mat_cluster"):
-        return
+    _have("mat_cluster")
     t = [o for o in _truth("mat_cluster")["objects"] if o["type"] == "polymsh"][0]
     objs, _ = _build(os.path.join(CORPUS, "mat_cluster.scn"))
     ob = objs[t["full"]]
@@ -313,18 +316,22 @@ def _dump_files():
     return [(s, f) for _, s, f in sorted(out)]   # smallest scenes first
 
 
-def _find(pred):
+def _find(pred, what="the case"):
     """First (scene, truth, material key, surface shader record) in the dumps where pred(shader, truth) holds,
-    for a material used by a mesh; smallest scene first."""
+    for a material used by a mesh; smallest scene first. No dumps here: Skip; dumps without such a material: a
+    failure (the case the test needs is gone)."""
     import json
-    for scn, f in _dump_files():
+    files = _dump_files()
+    if not files:
+        raise Skip("no Softimage material dumps under %s" % REF)
+    for scn, f in files:
         t = json.load(open(f))
         mats = {m["key"]: m for m in t["materials"]}
         for key in [o.get("material") for o in t["objects"] if o["type"] == "polymsh"]:
             s = mats.get(key, {}).get("ports", {}).get("surface")
             if s and pred(t["shaders"][s], t):
                 return scn, t, key, t["shaders"][s]
-    return None
+    raise AssertionError("no material in the dumps has %s" % what)
 
 
 def _v(p, k):
@@ -341,10 +348,7 @@ def _rgb(p, k):
 def test_redshift_and_arnold_values():
     """C5: one material of each Redshift / Arnold family from the dumps; values follow the spec's table."""
     def check(progid, fn):
-        hit = _find(lambda s, t: s["progid"] == progid)
-        if hit is None:
-            return
-        scn, t, key, s = hit
+        scn, t, key, s = _find(lambda s, t: s["progid"] == progid, progid)
         _build(scn)
         fn(_mat(key), s["params"])
 
@@ -382,16 +386,14 @@ def test_redshift_and_arnold_values():
     check("Redshift.material-incandescent.1.0", incand)
     check("Softimage.standard.1.0", std)
     check("ArnoldCoreShaders.standard.1.0", std)
-    check("Arnold.standard_surface.1.0", surf)
+    # Arnold.standard_surface.1.0 (surf above): no scene in the dumps uses it, so it is not checked (found
+    # 2026-11-16: the old silent return hid that); add it here when a scene with one turns up.
 
 
 def test_unsupported_surface_reported():
     """C6: an unsupported surface shader gives a named material, a report line naming material and shader, and
     a si_import_notes entry."""
-    hit = _find(lambda s, t: s["progid"] == "Arnold.utility.1.0")
-    if hit is None:
-        return
-    scn, t, key, s = hit
+    scn, t, key, s = _find(lambda s, t: s["progid"] == "Arnold.utility.1.0", "Arnold.utility.1.0")
     _, reports = _build(scn)
     m = _mat(key)
     assert "Arnold.utility" in m.get("si_import_notes", ""), dict(m)
@@ -401,8 +403,7 @@ def test_unsupported_surface_reported():
 def test_uv_maps():
     """C7: every texture projection becomes a UV map of the same name with Softimage's per-corner values."""
     for case in ("mat_uv", "mat_uv2"):
-        if not _have(case):
-            continue
+        _have(case)
         t = [o for o in _truth(case)["objects"] if o["type"] == "polymsh"][0]
         objs, _ = _build(os.path.join(CORPUS, case + ".scn"))
         me = objs[t["full"]].data
@@ -476,11 +477,9 @@ def test_render_tree_nodes_noted():
     def other_nodes(s, t):
         return any(isinstance(x, dict) and "from" in x and "image-explicit" not in t["shaders"][x["from"]]["progid"]
                    for x in s["params"].values())
-    hit = _find(lambda s, t: s["progid"] in ("Softimage.material-phong.1.0", "Softimage.standard.1.0",
-                                             "Redshift.material-architectural.1.0") and other_nodes(s, t))
-    if hit is None:
-        return
-    scn, t, key, s = hit
+    scn, t, key, s = _find(lambda s, t: s["progid"] in ("Softimage.material-phong.1.0", "Softimage.standard.1.0",
+                                                        "Redshift.material-architectural.1.0") and other_nodes(s, t),
+                           "a render tree with other nodes")
     _, reports = _build(scn)
     notes = _mat(key).get("si_import_notes", "")
     srcs = {t["shaders"][x["from"]]["progid"] for x in s["params"].values() if isinstance(x, dict) and "from" in x}
@@ -558,8 +557,7 @@ def test_move_center():
     frozen mesh scaled 0.01 like the tank rig's meshes)."""
     import json
     for case in ("ctr_cube_pos", "ctr_cube_rot", "ctr_cube_scl", "ctr_cube_two", "ctr_frozen_scl", "ctr_bbox"):
-        if not _have(case):
-            continue
+        _have(case)
         ob = _import(case)["cube1"]
         t = [o for o in json.load(open(os.path.join(CORPUS, case + ".json")))["objects"] if o["name"] == "cube1"][0]
         want = [(x, -z, y) for x, y, z in t["mesh"]["points"]]
@@ -574,10 +572,14 @@ def test_envelopes():
     reference/deform_truth; skipped when there are none)."""
     import glob
     import json
+    checked = 0
     for truth in sorted(glob.glob(os.path.join(REF, "deform_truth", "*.json"))):
         t = json.load(open(truth))
         if os.path.isfile(t["scene"]) and any(o.get("envelopes") for o in t["objects"]):
             _check_envelopes(t)
+            checked += 1
+    if not checked:
+        raise Skip("no envelope truth with its scene on disk under %s" % os.path.join(REF, "deform_truth"))
 
 
 def _check_envelopes(t):
@@ -617,10 +619,12 @@ def test_visibility():
     way in Blender (private scenes with a truth export in reference/visibility_truth; skipped when there are none)."""
     import glob
     import json
+    scenes = 0
     for truth in sorted(glob.glob(os.path.join(REF, "visibility_truth", "*.json"))):
         t = json.load(open(truth))
         if not os.path.isfile(t["scene"]):
             continue
+        scenes += 1
         objs, _reports = _build(t["scene"])
         vl = bpy.context.view_layer
         checked = 0
@@ -633,3 +637,5 @@ def test_visibility():
             assert ob.hide_select == (not o["selectability"]), (o["full"], "select")
             checked += 1
         assert checked, truth
+    if not scenes:
+        raise Skip("no visibility truth with its scene on disk under %s" % os.path.join(REF, "visibility_truth"))

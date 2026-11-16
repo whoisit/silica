@@ -15,33 +15,13 @@ win = bpy.context.window_manager.windows[0]
 views = sorted((a for a in win.screen.areas if a.type == 'VIEW_3D'), key=lambda a: (-a.y, a.x))
 B = views[1]
 region = next(r for r in B.regions if r.type == 'WINDOW')
-errors, steps = [], []
+from _gui import Run
+R = Run("GIZMO", step=0.15)
+s, check, errors = R.s, R.check, R.errors
 
 
 def ev(t, v, x, y):
     win.event_simulate(type=t, value=v, x=int(x), y=int(y))
-
-
-def s(fn, wait=0.15):
-    steps.append((fn, wait))
-
-
-def check(cond, msg):
-    if not cond:
-        errors.append(msg)
-
-
-def run():
-    if not steps:
-        print("SHOT: GIZMO", "PASS" if not errors else "FAIL " + "; ".join(errors))
-        return None
-    fn, wait = steps.pop(0)
-    try:
-        fn()
-    except Exception as e:
-        import traceback
-        errors.append("%s" % traceback.format_exc()[-300:])
-    return wait
 
 
 def screen(p3):
@@ -143,4 +123,4 @@ def check_ring():
 s(check_ring)
 s(lambda: (ev('ESC', 'PRESS', cx, cy), ev('ESC', 'RELEASE', cx, cy)), 0.2)
 
-bpy.app.timers.register(run, first_interval=0.5)
+R.start(0.5)

@@ -655,12 +655,16 @@ def node_objects(context, kind, name):
     return []
 
 
-def select(context, name, mode='SET', branch=False, index=None):
+def select(context, name, mode='SET', branch=False, index=None, obj=None):
     """Explorer selection on object `name` (spec 1.4-1.7): mode SET / ADD / RANGE / TOGGLE / DESELECT; branch =
     the object and all its descendants (middle button); index = the clicked row (the object may show several
     times). Returns False if the object isn't in the view layer."""
     vl = context.view_layer
-    ob = vl.objects.get(name)
+    if obj is not None:                  # the object itself (names can be shared with linked objects)
+        ob = obj if any(o == obj for o in [vl.objects.get(obj.name)] if o is not None) or \
+            obj in set(vl.objects) else None
+    else:
+        ob = vl.objects.get(name)
     if ob is None:
         return False
     _object_mode(context)

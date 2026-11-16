@@ -11,19 +11,9 @@ win = bpy.context.window_manager.windows[0]
 views = sorted((a for a in win.screen.areas if a.type == 'VIEW_3D'), key=lambda a: (-a.y, a.x))
 B = views[1]
 rB = next(r for r in B.regions if r.type == 'WINDOW')
-errors, steps = [], []
-def s(fn, w=0.3): steps.append((fn, w))
-def check(c, m):
-    if not c: errors.append(m)
-def run():
-    if not steps:
-        print("SHOT: FREEZE", "PASS" if not errors else "FAIL " + " | ".join(errors))
-        return None
-    fn, w = steps.pop(0)
-    try: fn()
-    except Exception:
-        import traceback; errors.append(traceback.format_exc()[-300:])
-    return w
+from _gui import Run
+R = Run("FREEZE", step=0.3)
+s, check, errors, steps = R.s, R.check, R.errors, R.steps
 def ev(t, v):
     win.event_simulate(type=t, value=v, x=rB.x + rB.width // 2, y=rB.y + rB.height // 2)
 def setup():
@@ -54,4 +44,4 @@ def undo_until_live():
 s(undo_until_live, 0.5)
 s(lambda: print("SHOT: undos needed to get the live cube back:", undos["n"]), 0.1)
 s(lambda: check(undos["n"] in (1, 2), "undo needed %d steps" % undos["n"]))
-bpy.app.timers.register(run, first_interval=0.6)
+R.start(0.6)

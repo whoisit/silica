@@ -11,20 +11,9 @@ keys bound even with Softimage keys off; Tab only in the Softimage Render Tree."
 import bpy, importlib
 K = "bl_ext.user_default.silica"
 win = bpy.context.window_manager.windows[0]
-errors, steps, S = [], [], {}
-def s(fn, w=0.2): steps.append((fn, w))
-def check(c, m):
-    if not c: errors.append(m)
-def run():
-    if not steps:
-        bpy.context.preferences.view.ui_scale = S.get("scale0", 1.0)
-        print("SHOT: PRESETS", "PASS" if not errors else "FAIL " + " | ".join(errors))
-        return None
-    fn, w = steps.pop(0)
-    try: fn()
-    except Exception:
-        import traceback; tb = traceback.format_exc().strip().splitlines(); errors.append(" / ".join(tb[-3:]))
-    return w
+from _gui import Run
+R = Run("PRESETS", step=0.2)
+s, check, errors, S, steps = R.s, R.check, R.errors, R.S, R.steps
 def np_(): return importlib.import_module(K + ".ui.node_presets")
 def views(): return sorted((a for a in win.screen.areas if a.type in ('VIEW_3D', 'NODE_EDITOR')), key=lambda a: (-a.y, a.x))
 def area(): return S["area"]
@@ -372,4 +361,4 @@ def c9():
         p.softimage_keys = S["keys0"]
     mode.enter_mode()
 s(c9, 0.5)
-bpy.app.timers.register(run, first_interval=0.8)
+R.start(0.8)
